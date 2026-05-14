@@ -408,3 +408,31 @@ async def test_non_dict_tool_schema_returns_400(client):
     assert resp.status_code == 400
     data = resp.json()
     assert "JSON Schema" in data["error"]["message"]
+
+
+@pytest.mark.asyncio
+async def test_input_file_content_block_returns_400(client):
+    _setup()
+    payload = {
+        "model": "deepseek-v4-flash",
+        "input": [{"type": "message", "role": "user", "content": [{"type": "input_file", "file_id": "file_123"}]}],
+    }
+    async with client as c:
+        resp = await c.post("/v1/responses", json=payload)
+    assert resp.status_code == 400
+    data = resp.json()
+    assert "input_file" in data["error"]["message"]
+
+
+@pytest.mark.asyncio
+async def test_invalid_function_call_arguments_returns_400(client):
+    _setup()
+    payload = {
+        "model": "deepseek-v4-flash",
+        "input": [{"type": "function_call", "call_id": "call_1", "name": "Read", "arguments": "not-json"}],
+    }
+    async with client as c:
+        resp = await c.post("/v1/responses", json=payload)
+    assert resp.status_code == 400
+    data = resp.json()
+    assert "arguments" in data["error"]["message"]

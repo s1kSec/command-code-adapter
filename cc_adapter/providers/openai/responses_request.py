@@ -45,6 +45,8 @@ RESPONSES_SESSION_PARAMS = {
     "text": "text",
 }
 
+SUPPORTED_MESSAGE_ROLES = {"user", "assistant", "system", "developer"}
+
 
 class ResponsesRequestTranslator:
     def translate(self, req: ResponseCreateRequest) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -228,51 +230,101 @@ class ResponsesRequestTranslator:
         role = item.get("role", "user")
         content_raw = item.get("content", "")
         content_blocks: list[dict[str, Any]] = []
-        if isinstance(content_raw, str):
+        if isinstance(content_raw, str) and content_raw.strip():
             content_blocks.append({"type": "text", "text": content_raw})
         elif isinstance(content_raw, list):
             for block in content_raw:
+                if not isinstance(block, dict):
+                    raise AdapterError(
+                        message="message content blocks must be objects",
+                        status_code=400,
+                    )
                 block_type = block.get("type", "")
                 if block_type == "input_text":
-                    content_blocks.append({"type": "text", "text": block.get("text", "")})
+                    content_blocks.append({"type": "text", "text": self._non_empty_block_text(block, "input_text")})
                 elif block_type == "input_image":
                     raise AdapterError(
                         message="input_image content blocks are not supported",
                         status_code=400,
                     )
                 elif block_type == "output_text":
-                    content_blocks.append({"type": "text", "text": block.get("text", "")})
+                    content_blocks.append({"type": "text", "text": self._non_empty_block_text(block, "output_text")})
+                elif block_type == "refusal":
+                    content_blocks.append({"type": "text", "text": self._non_empty_block_text(block, "refusal")})
                 else:
-                    content_blocks.append({"type": "text", "text": str(block)})
+                    raise AdapterError(
+                        message=f"message content block type '{block_type}' is not supported",
+                        status_code=400,
+                    )
         if role == "assistant":
             for tool_call in item.get("tool_calls") or []:
-                tid = tool_call.get("id", "")
-                tool_names[tid] = tool_call.get("function", {}).get("name", "")
+                tid, tool_name, args = self._parse_message_tool_call(tool_call)
+                tool_names[tid] = tool_name
                 content_blocks.append(
                     {
                         "type": "tool-call",
                         "toolCallId": tid,
-                        "toolName": tool_call.get("function", {}).get("name", ""),
-                        "input": normalize_input_args(
-                            self._parse_json_args(tool_call.get("function", {}).get("arguments", "{}"))
-                        ),
+                        "toolName": tool_name,
+                        "input": normalize_input_args(args),
                     }
                 )
+        if not content_blocks:
+            raise AdapterError(
+                message=f"message has no supported content for role '{role}'",
+                status_code=400,
+            )
         return [{"role": role, "content": content_blocks}]
 
     def _validate_message_item(self, item: dict[str, Any]) -> None:
         role = item.get("role", "user")
+        if role not in SUPPORTED_MESSAGE_ROLES:
+            raise AdapterError(
+                message=f"Unsupported message role '{role}'",
+                status_code=400,
+            )
         content_raw = item.get("content", "")
-        if isinstance(content_raw, str) and not content_raw.strip():
+        has_tool_calls = role == "assistant" and bool(item.get("tool_calls"))
+        if isinstance(content_raw, str) and not content_raw.strip() and not has_tool_calls:
             raise AdapterError(
                 message=f"message content is empty for role '{role}'",
                 status_code=400,
             )
-        if isinstance(content_raw, list) and len(content_raw) == 0:
+        if isinstance(content_raw, list) and len(content_raw) == 0 and not has_tool_calls:
             raise AdapterError(
                 message=f"message content is an empty list for role '{role}'",
                 status_code=400,
             )
+        if not isinstance(content_raw, (str, list)):
+            raise AdapterError(
+                message=f"message content must be a string or list for role '{role}'",
+                status_code=400,
+            )
+
+    @staticmethod
+    def _non_empty_block_text(block: dict[str, Any], block_type: str) -> str:
+        key = "refusal" if block_type == "refusal" else "text"
+        text = block.get(key, "")
+        if not isinstance(text, str) or not text.strip():
+            raise AdapterError(
+                message=f"{block_type} content block text is empty",
+                status_code=400,
+            )
+        return text
+
+    def _parse_message_tool_call(self, tool_call: dict[str, Any]) -> tuple[str, str, dict[str, Any]]:
+        if not isinstance(tool_call, dict):
+            raise AdapterError(message="assistant tool_calls entries must be objects", status_code=400)
+        tid = tool_call.get("id", "")
+        if not tid:
+            raise AdapterError(message="assistant tool_call must have a non-empty 'id'", status_code=400)
+        function = tool_call.get("function") or {}
+        if not isinstance(function, dict):
+            raise AdapterError(message="assistant tool_call function must be an object", status_code=400)
+        tool_name = function.get("name", "")
+        if not tool_name:
+            raise AdapterError(message="assistant tool_call function must have a non-empty 'name'", status_code=400)
+        args = self._parse_json_args(function.get("arguments", "{}"), "assistant tool_call arguments")
+        return tid, tool_name, args
 
     def _translate_function_call_item(self, item: dict[str, Any], tool_names: dict[str, str]) -> list[dict[str, Any]]:
         call_id = item.get("call_id", "")
@@ -296,7 +348,9 @@ class ResponsesRequestTranslator:
                         "type": "tool-call",
                         "toolCallId": call_id,
                         "toolName": name,
-                        "input": normalize_input_args(self._parse_json_args(item.get("arguments", "{}"))),
+                        "input": normalize_input_args(
+                            self._parse_json_args(item.get("arguments", "{}"), "function_call arguments")
+                        ),
                     }
                 ],
             }
@@ -322,9 +376,26 @@ class ResponsesRequestTranslator:
         ]
 
     @staticmethod
-    def _parse_json_args(raw: str) -> dict[str, Any]:
-        try:
-            parsed = json.loads(raw or "{}")
-            return parsed if isinstance(parsed, dict) else {}
-        except (json.JSONDecodeError, ValueError):
+    def _parse_json_args(raw: Any, label: str = "arguments") -> dict[str, Any]:
+        if raw is None or raw == "":
             return {}
+        if isinstance(raw, dict):
+            return raw
+        if not isinstance(raw, str):
+            raise AdapterError(
+                message=f"{label} must be a JSON object string",
+                status_code=400,
+            )
+        try:
+            parsed = json.loads(raw)
+        except (json.JSONDecodeError, ValueError) as exc:
+            raise AdapterError(
+                message=f"{label} must be valid JSON",
+                status_code=400,
+            ) from exc
+        if not isinstance(parsed, dict):
+            raise AdapterError(
+                message=f"{label} must decode to a JSON object",
+                status_code=400,
+            )
+        return parsed

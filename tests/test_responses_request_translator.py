@@ -383,3 +383,65 @@ async def test_tool_choice_name_not_in_tools_raises_400(translator):
         translator.translate(req)
     assert exc.value.status_code == 400
     assert "does not match" in exc.value.message
+
+
+@pytest.mark.asyncio
+async def test_unknown_message_role_raises_400(translator):
+    req = ResponseCreateRequest(
+        model="deepseek-v4-flash",
+        input=[{"type": "message", "role": "narrator", "content": [{"type": "input_text", "text": "hi"}]}],
+    )
+    with pytest.raises(AdapterError) as exc:
+        translator.translate(req)
+    assert exc.value.status_code == 400
+    assert "role" in exc.value.message
+
+
+@pytest.mark.asyncio
+async def test_input_file_content_block_raises_400(translator):
+    req = ResponseCreateRequest(
+        model="deepseek-v4-flash",
+        input=[{"type": "message", "role": "user", "content": [{"type": "input_file", "file_id": "file_123"}]}],
+    )
+    with pytest.raises(AdapterError) as exc:
+        translator.translate(req)
+    assert exc.value.status_code == 400
+    assert "input_file" in exc.value.message
+
+
+@pytest.mark.asyncio
+async def test_function_call_invalid_arguments_raises_400(translator):
+    req = ResponseCreateRequest(
+        model="deepseek-v4-flash",
+        input=[{"type": "function_call", "call_id": "call_1", "name": "Read", "arguments": "not-json"}],
+    )
+    with pytest.raises(AdapterError) as exc:
+        translator.translate(req)
+    assert exc.value.status_code == 400
+    assert "arguments" in exc.value.message
+
+
+@pytest.mark.asyncio
+async def test_assistant_tool_calls_without_text_content_translates(translator):
+    req = ResponseCreateRequest(
+        model="deepseek-v4-flash",
+        input=[
+            {
+                "type": "message",
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {"id": "call_1", "function": {"name": "Read", "arguments": '{"path": "/tmp/test.txt"}'}}
+                ],
+            },
+            {"type": "function_call_output", "call_id": "call_1", "output": "file content"},
+        ],
+    )
+    body, headers = translator.translate(req)
+    messages = body["params"]["messages"]
+    assert messages[0]["role"] == "assistant"
+    assert messages[0]["content"] == [
+        {"type": "tool-call", "toolCallId": "call_1", "toolName": "Read", "input": {"path": "/tmp/test.txt"}}
+    ]
+    assert messages[1]["role"] == "tool"
+    assert messages[1]["content"][0]["toolName"] == "Read"

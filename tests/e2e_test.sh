@@ -4,11 +4,11 @@
 # 用法: CC_ADAPTER_KEY=<access_key> bash tests/e2e_test.sh
 # 环境变量:
 #   CC_ADAPTER_KEY  - access_key (来自 .env 的 CC_ADAPTER_ACCESS_KEY)
-#   BASE_URL        - 适配器地址 (默认 http://localhost:8081)
+#   BASE_URL        - 适配器地址 (默认 http://localhost:8080)
 # ===================================================
 set -euo pipefail
 
-BASE_URL="${BASE_URL:-http://localhost:8081}"
+BASE_URL="${BASE_URL:-http://localhost:8080}"
 CC_KEY="${CC_ADAPTER_KEY:?必须设置 CC_ADAPTER_KEY}"
 
 PASS=0
@@ -18,12 +18,12 @@ check() {
     local name="$1" expected="$2" actual="$3"
     if [ "$actual" = "$expected" ]; then
         echo "  ✅ PASS: $name"
-        ((PASS++))
+        ((PASS+=1))
     else
         echo "  ❌ FAIL: $name"
         echo "     expected: $expected"
         echo "     actual:   $actual"
-        ((FAIL++))
+        ((FAIL+=1))
     fi
 }
 
@@ -31,13 +31,29 @@ check_contains() {
     local name="$1" substr="$2" output="$3"
     if echo "$output" | grep -Fq "$substr"; then
         echo "  ✅ PASS: $name"
-        ((PASS++))
+        ((PASS+=1))
     else
         echo "  ❌ FAIL: $name"
         echo "     expected to contain: $substr"
         echo "     output: $(echo "$output" | head -3)"
-        ((FAIL++))
+        ((FAIL+=1))
     fi
+}
+
+check_contains_any() {
+    local name="$1" output="$2"
+    shift 2
+    for substr in "$@"; do
+        if echo "$output" | grep -Fq "$substr"; then
+            echo "  ✅ PASS: $name"
+            ((PASS+=1))
+            return
+        fi
+    done
+    echo "  ❌ FAIL: $name"
+    echo "     expected to contain one of: $*"
+    echo "     output: $(echo "$output" | head -3)"
+    ((FAIL+=1))
 }
 
 echo ""
@@ -131,8 +147,7 @@ TOOL_OPENAI_RESP=$(curl -s --max-time 120 -X POST "$BASE_URL/v1/chat/completions
   }' 2>/dev/null)
 
 check_contains "返回 finish_reason" "finish_reason" "$TOOL_OPENAI_RESP"
-check_contains "返回 tool_calls" "tool_calls" "$TOOL_OPENAI_RESP" || \
-  check_contains "返回 content (文本回复)" "content" "$TOOL_OPENAI_RESP"
+check_contains_any "返回 tool_calls 或 content" "$TOOL_OPENAI_RESP" "tool_calls" "content"
 echo ""
 
 # ============== 5. Anthropic 模拟工具调用 ==============
@@ -164,8 +179,7 @@ TOOL_ANTH_RESP=$(curl -s --max-time 120 -X POST "$BASE_URL/v1/messages" \
   }' 2>/dev/null)
 
 check_contains "返回 stop_reason" "stop_reason" "$TOOL_ANTH_RESP"
-check_contains "返回 tool_use" "tool_use" "$TOOL_ANTH_RESP" || \
-  check_contains "返回 text" "text" "$TOOL_ANTH_RESP"
+check_contains_any "返回 tool_use 或 text" "$TOOL_ANTH_RESP" "tool_use" "text"
 echo ""
 
 # ============== 6. Anthropic 多轮工具调用 ==============
