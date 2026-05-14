@@ -206,6 +206,22 @@ MULTI_ANTH_RESP=$(curl -s --max-time 120 -X POST "$BASE_URL/v1/messages" \
 
 check_contains "多轮工具调用返回 stop_reason" "stop_reason" "$MULTI_ANTH_RESP"
 
+# ============== 7. /v1/responses (OpenAI Responses API) ==============
+echo "--- 7. /v1/responses (OpenAI Responses API, non-streaming) ---"
+
+RESP_RESP=$(curl -s --max-time 60 -X POST "$BASE_URL/v1/responses" \
+  -H "content-type: application/json" \
+  -H "Authorization: Bearer $CC_KEY" \
+  -d '{
+    "model": "deepseek/deepseek-v4-flash",
+    "input": "Say hello in one word",
+    "instructions": "Be concise",
+    "stream": false
+  }' 2>/dev/null)
+
+check_contains "返回 output_text" "output_text" "$RESP_RESP"
+echo ""
+
 echo ""
 echo "=========================================="
 echo " 测试结果: $PASS 通过, $FAIL 失败"

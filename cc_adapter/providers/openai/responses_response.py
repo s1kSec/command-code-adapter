@@ -5,12 +5,8 @@ import time
 import uuid
 from typing import AsyncGenerator, Any
 
-import structlog
-
 from cc_adapter.core.errors import AdapterError, map_upstream_error
 from cc_adapter.providers.shared.tool_mapping import normalize_args
-
-logger = structlog.get_logger(__name__)
 
 
 def _generate_id() -> str:
@@ -118,6 +114,8 @@ async def translate_responses_stream(
                 "sequence_number": seq,
             })
             seq += 1
+            output_index += 1
+        elif current_item_type == "fc":
             output_index += 1
         current_item_type_val = None
 
@@ -287,14 +285,16 @@ async def translate_responses_stream(
                 full_text = "".join(text_buf)
                 output_items: list[dict] = []
                 if reasoning_buf:
+                    rs_id = reasoning_item_id or _generate_rs_id()
                     output_items.append({
-                        "type": "reasoning", "id": _generate_rs_id(),
+                        "type": "reasoning", "id": rs_id,
                         "content": [{"type": "reasoning_text", "text": "".join(reasoning_buf)}],
                         "status": "completed",
                     })
                 if full_text:
+                    msg_id = text_item_id or _generate_msg_id()
                     output_items.append({
-                        "type": "message", "id": _generate_msg_id(), "role": "assistant",
+                        "type": "message", "id": msg_id, "role": "assistant",
                         "status": "completed",
                         "content": [{"type": "output_text", "text": full_text, "annotations": []}],
                     })

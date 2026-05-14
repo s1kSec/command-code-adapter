@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import time
-
 import structlog
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -14,6 +12,7 @@ from cc_adapter.providers.openai.responses_models import ResponseCreateRequest
 from cc_adapter.providers.openai.responses_response import (
     translate_responses_stream,
     collect_and_translate_responses_nonstream,
+    _sse,
 )
 
 logger = structlog.get_logger(__name__)
@@ -39,7 +38,7 @@ async def _responses_stream_with_retry(generate_fn, model: str):
             logger.warning("responses.retry", reason="empty_response", attempt=attempt + 1, max_attempts=2)
             if not yielded_any and attempt == 0 and "empty response" in e.message.lower():
                 continue
-            yield _responses_sse_error(e.message)
+            yield _sse({"type": "error", "code": 502, "message": e.message})
             return
         return
 
@@ -54,12 +53,6 @@ async def _responses_nonstream_with_retry(generate_fn, model: str):
                 logger.warning("responses.nonstream.retry", reason="empty_response", attempt=1, max_attempts=2)
                 continue
             raise
-
-
-def _responses_sse_error(message: str) -> str:
-    import json
-    data = json.dumps({"type": "error", "code": 502, "message": message})
-    return f"data: {data}\n\n"
 
 
 @router.post("/v1/responses")

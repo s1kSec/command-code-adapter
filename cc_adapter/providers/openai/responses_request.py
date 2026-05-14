@@ -1,16 +1,22 @@
 from __future__ import annotations
 
 import json
-import logging
 from typing import Any
+
+import structlog
 
 from cc_adapter.providers.openai.responses_models import ResponseCreateRequest
 from cc_adapter.command_code.body import _make_config, make_cc_body
 from cc_adapter.command_code.headers import make_cc_headers
-from cc_adapter.providers.shared.model_mapping import MODEL_PROVIDER_MAP
+from cc_adapter.providers.shared.model_mapping import (
+    MODEL_PROVIDER_MAP,
+    REASONING_EFFORT_MAX,
+    REASONING_EFFORT_MAP,
+)
 from cc_adapter.providers.shared.tool_mapping import normalize_input_args, normalize_schema
+from cc_adapter.core.utils import is_deepseek_v4_model
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 RESPONSES_NOT_SUPPORTED = {
     "top_p": "top_p",
@@ -25,6 +31,7 @@ RESPONSES_NOT_SUPPORTED = {
     "include": "include",
     "safety_identifier": "safety_identifier",
     "prompt_cache_key": "prompt_cache_key",
+    "prompt_cache_retention": "prompt_cache_retention",
     "background": "background",
     "top_logprobs": "top_logprobs",
     "previous_response_id": "previous_response_id",
@@ -66,7 +73,17 @@ class ResponsesRequestTranslator:
         if req.reasoning:
             effort = req.reasoning.get("effort")
             if effort:
-                params["reasoning_effort"] = effort
+                model_id = self._normalize_model(req.model)
+                if is_deepseek_v4_model(model_id) and effort in ("xhigh", "max"):
+                    params["reasoning_effort"] = "max"
+                    current_system = params.get("system", "")
+                    params["system"] = f"{REASONING_EFFORT_MAX}{current_system}" if current_system else REASONING_EFFORT_MAX
+                else:
+                    params["reasoning_effort"] = effort
+                    instruction = REASONING_EFFORT_MAP.get(effort, "")
+                    if instruction:
+                        current_system = params.get("system", "")
+                        params["system"] = f"{current_system}\n{instruction}" if current_system else instruction
         if req.tools:
             params["tools"] = [
                 {
