@@ -38,7 +38,7 @@ async def _responses_stream_with_retry(generate_fn, model: str):
             logger.warning("responses.retry", reason="empty_response", attempt=attempt + 1, max_attempts=2)
             if not yielded_any and attempt == 0 and "empty response" in e.message.lower():
                 continue
-            yield _sse({"type": "error", "code": 502, "message": e.message})
+            yield _sse("error", {"code": 502, "message": e.message})
             return
         return
 

@@ -36,12 +36,19 @@ def client():
 
 def _parse_sse(text: str) -> list[dict]:
     events = []
-    for line in text.strip().split("\n"):
-        if not line.strip():
+    for block in text.strip().split("\n\n"):
+        if not block.strip():
             continue
-        if line.startswith("data: "):
-            data = json.loads(line[6:])
-            events.append(data)
+        event_type = ""
+        data = {}
+        for line in block.strip().split("\n"):
+            if line.startswith("event: "):
+                event_type = line[7:]
+            elif line.startswith("data: "):
+                data = json.loads(line[6:])
+        data["type"] = event_type
+        events.append(data)
+    return events
     return events
 
 
@@ -164,8 +171,37 @@ async def test_stream_text_only(client):
     assert "response.content_part.added" in types
     assert "response.output_text.delta" in types
     assert "response.content_part.done" in types
+    assert "response.output_text.done" in types
     assert "response.output_item.done" in types
     assert "response.completed" in types
+
+
+@pytest.mark.asyncio
+async def test_stream_empty_upstream_raises_error(client):
+    empty_events: list[dict] = []
+    call_count = 0
+
+    async def _empty_generate(body, extra_headers=None):
+        nonlocal call_count
+        call_count += 1
+        for event in empty_events:
+            yield event
+
+    cfg = AppConfig(cc_api_key="test_key_123")
+    mock_client = MagicMock(spec=CommandCodeClient)
+    mock_client.api_key = "test_key_123"
+    mock_client.base_url = "https://api.commandcode.ai"
+    mock_client.generate = _empty_generate
+    admin_init(cfg, mock_client)
+
+    payload = {"model": "deepseek-v4-flash", "input": "hi", "stream": True}
+    async with client as c:
+        resp = await c.post("/v1/responses", json=payload)
+    assert resp.status_code in (200, 401, 502)
+    if resp.status_code == 200:
+        events = _parse_sse(resp.text)
+        assert len(events) == 1
+        assert events[0]["type"] == "error"
 
 
 @pytest.mark.asyncio
@@ -212,6 +248,14 @@ async def test_stream_tool_call(client):
     fc_args_done = [e for e in events if e["type"] == "response.function_call_arguments.done"]
     args = json.loads(fc_args_done[0]["arguments"])
     assert args.get("filePath") == "/tmp/test.txt"
+    completed = [e for e in events if e["type"] == "response.completed"]
+    assert len(completed) == 1
+    output = completed[0]["response"]["output"]
+    assert len(output) == 1
+    assert output[0]["type"] == "function_call"
+    assert output[0]["arguments"] != "{}"
+    completed_args = json.loads(output[0]["arguments"])
+    assert completed_args.get("filePath") == "/tmp/test.txt"
 
 
 @pytest.mark.asyncio
