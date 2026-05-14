@@ -140,13 +140,15 @@ class ResponsesRequestTranslator:
                 }
                 for t in req.tools
             ]
-        tool_choice = self._translate_tool_choice(req.tool_choice)
+        tool_choice = self._translate_tool_choice(req.tool_choice, req.tools)
         if tool_choice is not None:
             params["tool_choice"] = tool_choice
         return make_cc_body(config=_make_config(), params=params)
 
     @staticmethod
-    def _translate_tool_choice(tool_choice: str | dict[str, Any] | None) -> dict[str, Any] | None:
+    def _translate_tool_choice(
+        tool_choice: str | dict[str, Any] | None, req_tools: list[dict[str, Any]] | None
+    ) -> dict[str, Any] | None:
         if tool_choice is None:
             return None
         if isinstance(tool_choice, str):
@@ -163,6 +165,17 @@ class ResponsesRequestTranslator:
             if tc_type == "function":
                 name = tool_choice.get("name", "")
                 if name:
+                    if not req_tools:
+                        raise AdapterError(
+                            message=f"tool_choice specifies function '{name}' but no tools are declared",
+                            status_code=400,
+                        )
+                    tool_names = [t.get("name") for t in req_tools]
+                    if name not in tool_names:
+                        raise AdapterError(
+                            message=f"tool_choice function '{name}' does not match any declared tool",
+                            status_code=400,
+                        )
                     return {"type": "tool", "name": name}
         raise AdapterError(
             message=f"Unsupported tool_choice value: {tool_choice}",
@@ -187,6 +200,17 @@ class ResponsesRequestTranslator:
         elif item_type == "function_call":
             return self._translate_function_call_item(item, tool_names)
         elif item_type == "function_call_output":
+            call_id = item.get("call_id", "")
+            if not call_id:
+                raise AdapterError(
+                    message="function_call_output item must have a non-empty 'call_id'",
+                    status_code=400,
+                )
+            if call_id not in tool_names:
+                raise AdapterError(
+                    message=f"function_call_output call_id '{call_id}' does not match any prior function_call",
+                    status_code=400,
+                )
             return self._translate_function_call_output_item(item, tool_names)
         elif item_type in ("reasoning", "item_reference"):
             raise AdapterError(
@@ -200,6 +224,7 @@ class ResponsesRequestTranslator:
             )
 
     def _translate_message_item(self, item: dict[str, Any], tool_names: dict[str, str]) -> list[dict[str, Any]]:
+        self._validate_message_item(item)
         role = item.get("role", "user")
         content_raw = item.get("content", "")
         content_blocks: list[dict[str, Any]] = []
@@ -211,7 +236,10 @@ class ResponsesRequestTranslator:
                 if block_type == "input_text":
                     content_blocks.append({"type": "text", "text": block.get("text", "")})
                 elif block_type == "input_image":
-                    logger.warning("Image input not supported, skipping")
+                    raise AdapterError(
+                        message="input_image content blocks are not supported",
+                        status_code=400,
+                    )
                 elif block_type == "output_text":
                     content_blocks.append({"type": "text", "text": block.get("text", "")})
                 else:
@@ -232,9 +260,33 @@ class ResponsesRequestTranslator:
                 )
         return [{"role": role, "content": content_blocks}]
 
+    def _validate_message_item(self, item: dict[str, Any]) -> None:
+        role = item.get("role", "user")
+        content_raw = item.get("content", "")
+        if isinstance(content_raw, str) and not content_raw.strip():
+            raise AdapterError(
+                message=f"message content is empty for role '{role}'",
+                status_code=400,
+            )
+        if isinstance(content_raw, list) and len(content_raw) == 0:
+            raise AdapterError(
+                message=f"message content is an empty list for role '{role}'",
+                status_code=400,
+            )
+
     def _translate_function_call_item(self, item: dict[str, Any], tool_names: dict[str, str]) -> list[dict[str, Any]]:
         call_id = item.get("call_id", "")
         name = item.get("name", "")
+        if not call_id:
+            raise AdapterError(
+                message="function_call item must have a non-empty 'call_id'",
+                status_code=400,
+            )
+        if not name:
+            raise AdapterError(
+                message="function_call item must have a non-empty 'name'",
+                status_code=400,
+            )
         tool_names[call_id] = name
         return [
             {

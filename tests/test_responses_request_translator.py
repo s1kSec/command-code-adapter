@@ -234,7 +234,12 @@ async def test_tool_choice_standard_dict_passthrough(translator):
 
 @pytest.mark.asyncio
 async def test_tool_choice_function_dict_translates(translator):
-    req = ResponseCreateRequest(model="deepseek-v4-flash", input="Hi", tool_choice={"type": "function", "name": "Read"})
+    req = ResponseCreateRequest(
+        model="deepseek-v4-flash",
+        input="Hi",
+        tools=[{"name": "Read", "input_schema": {"type": "object", "properties": {}}}],
+        tool_choice={"type": "function", "name": "Read"},
+    )
     body, headers = translator.translate(req)
     assert body["params"]["tool_choice"] == {"type": "tool", "name": "Read"}
 
@@ -281,3 +286,100 @@ async def test_tool_non_dict_schema_raises_400(translator):
         translator.translate(req)
     assert exc.value.status_code == 400
     assert "JSON Schema" in exc.value.message
+
+
+@pytest.mark.asyncio
+async def test_input_image_content_block_raises_400(translator):
+    req = ResponseCreateRequest(
+        model="deepseek-v4-flash",
+        input=[
+            {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_image", "image_url": "http://example.com/img.png"}],
+            }
+        ],
+    )
+    with pytest.raises(AdapterError) as exc:
+        translator.translate(req)
+    assert exc.value.status_code == 400
+    assert "input_image" in exc.value.message
+
+
+@pytest.mark.asyncio
+async def test_empty_message_content_list_raises_400(translator):
+    req = ResponseCreateRequest(model="deepseek-v4-flash", input=[{"type": "message", "role": "user", "content": []}])
+    with pytest.raises(AdapterError) as exc:
+        translator.translate(req)
+    assert exc.value.status_code == 400
+    assert "empty" in exc.value.message
+
+
+@pytest.mark.asyncio
+async def test_empty_message_content_str_raises_400(translator):
+    req = ResponseCreateRequest(
+        model="deepseek-v4-flash", input=[{"type": "message", "role": "user", "content": "   "}]
+    )
+    with pytest.raises(AdapterError) as exc:
+        translator.translate(req)
+    assert exc.value.status_code == 400
+    assert "empty" in exc.value.message
+
+
+@pytest.mark.asyncio
+async def test_function_call_missing_call_id_raises_400(translator):
+    req = ResponseCreateRequest(
+        model="deepseek-v4-flash",
+        input=[{"type": "function_call", "name": "Read", "arguments": "{}"}],
+    )
+    with pytest.raises(AdapterError) as exc:
+        translator.translate(req)
+    assert exc.value.status_code == 400
+    assert "call_id" in exc.value.message
+
+
+@pytest.mark.asyncio
+async def test_function_call_missing_name_raises_400(translator):
+    req = ResponseCreateRequest(
+        model="deepseek-v4-flash",
+        input=[{"type": "function_call", "call_id": "call_1", "arguments": "{}"}],
+    )
+    with pytest.raises(AdapterError) as exc:
+        translator.translate(req)
+    assert exc.value.status_code == 400
+    assert "name" in exc.value.message
+
+
+@pytest.mark.asyncio
+async def test_function_call_output_unmatched_call_id_raises_400(translator):
+    req = ResponseCreateRequest(
+        model="deepseek-v4-flash",
+        input=[{"type": "function_call_output", "call_id": "orphan_id", "output": "result"}],
+    )
+    with pytest.raises(AdapterError) as exc:
+        translator.translate(req)
+    assert exc.value.status_code == 400
+    assert "orphan_id" in exc.value.message
+
+
+@pytest.mark.asyncio
+async def test_tool_choice_function_without_tools_raises_400(translator):
+    req = ResponseCreateRequest(model="deepseek-v4-flash", input="Hi", tool_choice={"type": "function", "name": "Read"})
+    with pytest.raises(AdapterError) as exc:
+        translator.translate(req)
+    assert exc.value.status_code == 400
+    assert "no tools" in exc.value.message
+
+
+@pytest.mark.asyncio
+async def test_tool_choice_name_not_in_tools_raises_400(translator):
+    req = ResponseCreateRequest(
+        model="deepseek-v4-flash",
+        input="Hi",
+        tools=[{"name": "Bash", "input_schema": {"type": "object", "properties": {}}}],
+        tool_choice={"type": "function", "name": "Read"},
+    )
+    with pytest.raises(AdapterError) as exc:
+        translator.translate(req)
+    assert exc.value.status_code == 400
+    assert "does not match" in exc.value.message
