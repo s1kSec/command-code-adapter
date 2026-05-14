@@ -94,6 +94,11 @@ class ResponsesRequestTranslator:
                     message="function tool must have an 'input_schema' or 'parameters' field",
                     status_code=400,
                 )
+            if not isinstance(input_schema, dict):
+                raise AdapterError(
+                    message="function tool 'input_schema' (or 'parameters') must be a JSON Schema object",
+                    status_code=400,
+                )
 
     @staticmethod
     def _normalize_model(model: str) -> str:
@@ -184,7 +189,10 @@ class ResponsesRequestTranslator:
         elif item_type == "function_call_output":
             return self._translate_function_call_output_item(item, tool_names)
         elif item_type in ("reasoning", "item_reference"):
-            return None
+            raise AdapterError(
+                message=f"Input item type '{item_type}' is not supported",
+                status_code=400,
+            )
         else:
             raise AdapterError(
                 message=f"Unsupported input item type '{item_type}'",

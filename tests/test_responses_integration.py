@@ -364,3 +364,47 @@ async def test_built_in_tool_returns_400(client):
     assert resp.status_code == 400
     data = resp.json()
     assert "web_search_preview" in data["error"]["message"]
+
+
+@pytest.mark.asyncio
+async def test_reasoning_input_item_returns_400(client):
+    _setup()
+    payload = {
+        "model": "deepseek-v4-flash",
+        "input": [{"type": "reasoning", "id": "rs_1", "content": [{"type": "reasoning_text", "text": "thinking"}]}],
+    }
+    async with client as c:
+        resp = await c.post("/v1/responses", json=payload)
+    assert resp.status_code == 400
+    data = resp.json()
+    assert "reasoning" in data["error"]["message"]
+
+
+@pytest.mark.asyncio
+async def test_missing_tool_name_returns_400(client):
+    _setup()
+    payload = {
+        "model": "deepseek-v4-flash",
+        "input": "do it",
+        "tools": [{"type": "function", "parameters": {"type": "object"}}],
+    }
+    async with client as c:
+        resp = await c.post("/v1/responses", json=payload)
+    assert resp.status_code == 400
+    data = resp.json()
+    assert "name" in data["error"]["message"]
+
+
+@pytest.mark.asyncio
+async def test_non_dict_tool_schema_returns_400(client):
+    _setup()
+    payload = {
+        "model": "deepseek-v4-flash",
+        "input": "do it",
+        "tools": [{"name": "my_func", "parameters": "not-a-schema"}],
+    }
+    async with client as c:
+        resp = await c.post("/v1/responses", json=payload)
+    assert resp.status_code == 400
+    data = resp.json()
+    assert "JSON Schema" in data["error"]["message"]

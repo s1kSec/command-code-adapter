@@ -247,3 +247,37 @@ async def test_tool_choice_nonstandard_dict_raises_400(translator):
     with pytest.raises(AdapterError) as exc:
         translator.translate(req)
     assert exc.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_reasoning_input_item_raises_400(translator):
+    req = ResponseCreateRequest(
+        model="deepseek-v4-flash",
+        input=[{"type": "reasoning", "id": "rs_1", "content": [{"type": "reasoning_text", "text": "Let me think"}]}],
+    )
+    with pytest.raises(AdapterError) as exc:
+        translator.translate(req)
+    assert exc.value.status_code == 400
+    assert "reasoning" in exc.value.message
+
+
+@pytest.mark.asyncio
+async def test_item_reference_input_item_raises_400(translator):
+    req = ResponseCreateRequest(model="deepseek-v4-flash", input=[{"type": "item_reference", "id": "resp_ref"}])
+    with pytest.raises(AdapterError) as exc:
+        translator.translate(req)
+    assert exc.value.status_code == 400
+    assert "item_reference" in exc.value.message
+
+
+@pytest.mark.asyncio
+async def test_tool_non_dict_schema_raises_400(translator):
+    req = ResponseCreateRequest(
+        model="deepseek-v4-flash",
+        input="do it",
+        tools=[{"name": "my_func", "parameters": "not-a-schema"}],
+    )
+    with pytest.raises(AdapterError) as exc:
+        translator.translate(req)
+    assert exc.value.status_code == 400
+    assert "JSON Schema" in exc.value.message
