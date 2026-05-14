@@ -82,6 +82,18 @@ class ResponsesRequestTranslator:
                     message=f"Unsupported tool type '{tool_type}': only 'function' tools are supported",
                     status_code=400,
                 )
+            name = t.get("name", "")
+            if not name:
+                raise AdapterError(
+                    message="function tool must have a non-empty 'name' field",
+                    status_code=400,
+                )
+            input_schema = t.get("input_schema", t.get("parameters"))
+            if input_schema is None:
+                raise AdapterError(
+                    message="function tool must have an 'input_schema' or 'parameters' field",
+                    status_code=400,
+                )
 
     @staticmethod
     def _normalize_model(model: str) -> str:
@@ -140,10 +152,17 @@ class ResponsesRequestTranslator:
             elif tool_choice == "required":
                 return {"type": "any"}
         if isinstance(tool_choice, dict):
-            name = tool_choice.get("name", "")
-            if name:
-                return {"type": "tool", "name": name}
-        return {"type": "auto"}
+            tc_type = tool_choice.get("type", "")
+            if tc_type in ("auto", "none", "any"):
+                return tool_choice
+            if tc_type == "function":
+                name = tool_choice.get("name", "")
+                if name:
+                    return {"type": "tool", "name": name}
+        raise AdapterError(
+            message=f"Unsupported tool_choice value: {tool_choice}",
+            status_code=400,
+        )
 
     def _build_messages(self, input_data: str | list[dict[str, Any]]) -> list[dict[str, Any]]:
         if isinstance(input_data, str):
@@ -167,8 +186,10 @@ class ResponsesRequestTranslator:
         elif item_type in ("reasoning", "item_reference"):
             return None
         else:
-            logger.warning("Unsupported input item type skipped: %s", item_type)
-            return None
+            raise AdapterError(
+                message=f"Unsupported input item type '{item_type}'",
+                status_code=400,
+            )
 
     def _translate_message_item(self, item: dict[str, Any], tool_names: dict[str, str]) -> list[dict[str, Any]]:
         role = item.get("role", "user")

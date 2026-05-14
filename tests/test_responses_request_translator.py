@@ -185,3 +185,65 @@ async def test_function_tool_passes_validation(translator):
     body, headers = translator.translate(req)
     assert len(body["params"]["tools"]) == 1
     assert body["params"]["tools"][0]["name"] == "my_func"
+
+
+@pytest.mark.asyncio
+async def test_function_tool_missing_name_raises_400(translator):
+    req = ResponseCreateRequest(
+        model="deepseek-v4-flash",
+        input="do it",
+        tools=[{"type": "function", "input_schema": {"type": "object"}}],
+    )
+    with pytest.raises(AdapterError) as exc:
+        translator.translate(req)
+    assert exc.value.status_code == 400
+    assert "name" in exc.value.message
+
+
+@pytest.mark.asyncio
+async def test_function_tool_missing_input_schema_raises_400(translator):
+    req = ResponseCreateRequest(
+        model="deepseek-v4-flash",
+        input="do it",
+        tools=[{"name": "my_func"}],
+    )
+    with pytest.raises(AdapterError) as exc:
+        translator.translate(req)
+    assert exc.value.status_code == 400
+    assert "input_schema" in exc.value.message
+
+
+@pytest.mark.asyncio
+async def test_unsupported_input_item_type_raises_400(translator):
+    req = ResponseCreateRequest(
+        model="deepseek-v4-flash",
+        input=[{"type": "web_search_call", "id": "ws_1"}],
+    )
+    with pytest.raises(AdapterError) as exc:
+        translator.translate(req)
+    assert exc.value.status_code == 400
+    assert "web_search_call" in exc.value.message
+
+
+@pytest.mark.asyncio
+async def test_tool_choice_standard_dict_passthrough(translator):
+    req = ResponseCreateRequest(model="deepseek-v4-flash", input="Hi", tool_choice={"type": "none"})
+    body, headers = translator.translate(req)
+    assert body["params"]["tool_choice"] == {"type": "none"}
+
+
+@pytest.mark.asyncio
+async def test_tool_choice_function_dict_translates(translator):
+    req = ResponseCreateRequest(model="deepseek-v4-flash", input="Hi", tool_choice={"type": "function", "name": "Read"})
+    body, headers = translator.translate(req)
+    assert body["params"]["tool_choice"] == {"type": "tool", "name": "Read"}
+
+
+@pytest.mark.asyncio
+async def test_tool_choice_nonstandard_dict_raises_400(translator):
+    req = ResponseCreateRequest(
+        model="deepseek-v4-flash", input="Hi", tool_choice={"type": "function", "function": {"name": "Read"}}
+    )
+    with pytest.raises(AdapterError) as exc:
+        translator.translate(req)
+    assert exc.value.status_code == 400
