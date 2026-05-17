@@ -4,15 +4,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-REASONING_EFFORT_MAX = (
-    "Reasoning Effort: Absolute maximum with no shortcuts permitted.\n"
-    "You MUST be very thorough in your thinking and comprehensively decompose "
-    "the problem to resolve the root cause, rigorously stress-testing your "
-    "logic against all potential paths, edge cases, and adversarial scenarios.\n"
-    "Explicitly write out your entire deliberation process, documenting every "
-    "intermediate step, considered alternative, and rejected hypothesis to "
-    "ensure absolutely no assumption is left unchecked.\n\n"
-)
+_EFFORT_ORDER = ["off", "low", "medium", "high", "xhigh", "max"]
 
 MODEL_PROVIDER_MAP: dict[str, str] = {
     "deepseek-v4-pro": "deepseek/deepseek-v4-pro",
@@ -28,13 +20,15 @@ MODEL_PROVIDER_MAP: dict[str, str] = {
     "step-3-5-flash": "stepfun/Step-3.5-Flash",
 }
 
-REASONING_EFFORT_MAP: dict[str, str] = {
-    "off": "Respond directly without showing step-by-step reasoning.",
-    "low": "Be concise. Minimize step-by-step reasoning.",
-    "medium": "",
-    "high": "Think step-by-step and show your reasoning process.",
-    "xhigh": "Think carefully step-by-step. Show detailed reasoning.",
-    "max": "Think very thoroughly. Show exhaustive step-by-step reasoning with detailed analysis.",
+MODEL_REASONING_EFFORTS_MAP: dict[str, list[str]] = {
+    "deepseek/deepseek-v4-pro": ["high", "max"],
+    "deepseek/deepseek-v4-flash": ["high", "max"],
+    "claude-sonnet-4-6": ["low", "medium", "high", "xhigh", "max"],
+    "claude-opus-4-7": ["low", "medium", "high", "xhigh", "max"],
+    "gpt-5.5": ["low", "medium", "high", "xhigh"],
+    "gpt-5.4": ["low", "medium", "high", "xhigh"],
+    "gpt-5.3-codex": ["low", "medium", "high", "xhigh"],
+    "gpt-5.4-mini": ["low", "medium", "high"],
 }
 
 NOT_SUPPORTED_PARAMS = {
@@ -46,3 +40,28 @@ NOT_SUPPORTED_PARAMS = {
     "user": "user",
     "response_format": "response_format",
 }
+
+
+def _resolve_model_id(model_id: str) -> str:
+    return MODEL_PROVIDER_MAP.get(model_id, model_id)
+
+
+def clamp_reasoning_effort(model_id: str, effort: str | None) -> str | None:
+    if effort is None:
+        return None
+    canonical = _resolve_model_id(model_id)
+    supported = MODEL_REASONING_EFFORTS_MAP.get(canonical)
+    if supported is None:
+        return None
+    if effort == "off":
+        return "off"
+    if effort in supported:
+        return effort
+    try:
+        effort_idx = _EFFORT_ORDER.index(effort)
+    except ValueError:
+        return supported[-1]
+    for s in supported:
+        if _EFFORT_ORDER.index(s) >= effort_idx:
+            return s
+    return supported[-1]
