@@ -125,7 +125,7 @@ client = OpenAI(
 | Qwen/Qwen3.6-Max-Preview, Qwen/Qwen3.6-Plus | low, medium, high |
 | stepfun/Step-3.5-Flash | low, medium, high |
 
-实现：仅透传 `reasoning_effort` 参数给 CC API，不注入任何 system prompt。响应端保留 `reasoning-delta` 的过滤逻辑（`"off"` 模式下剥离 `reasoning_content`）。
+实现：对 `reasoning_effort` 按模型支持范围进行 clamp（nearest-higher）后透传给 CC API，不注入任何 system prompt。响应端保留 `reasoning-delta` 的过滤逻辑（`"off"` 模式下剥离 `reasoning_content`）。
 
 ```bash
 curl http://localhost:8080/v1/chat/completions \
@@ -299,7 +299,7 @@ Supported values vary per model. The adapter uses `MODEL_REASONING_EFFORTS_MAP` 
 | Qwen/Qwen3.6-Max-Preview, Qwen/Qwen3.6-Plus | low, medium, high |
 | stepfun/Step-3.5-Flash | low, medium, high |
 
-Implementation: forwards `reasoning_effort` to CC API as-is, with **no system prompt injection**.
+Implementation: clamps `reasoning_effort` to the model's supported range (nearest-higher), then forwards to CC API. **No system prompt injection**. Response-side filtering strips `reasoning-delta` events when set to `"off"`.
 
 ```bash
 curl http://localhost:8080/v1/chat/completions \
