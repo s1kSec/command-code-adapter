@@ -53,6 +53,13 @@ async def test_reasoning_effort_mapped(translator):
 
 
 @pytest.mark.asyncio
+async def test_reasoning_effort_xhigh_clamps_for_deepseek(translator):
+    req = ResponseCreateRequest(model="deepseek-v4-flash", input="Hi", reasoning={"effort": "xhigh"})
+    body, headers = translator.translate(req)
+    assert body["params"]["reasoning_effort"] == "max"
+
+
+@pytest.mark.asyncio
 async def test_tools(translator):
     req = ResponseCreateRequest(
         model="deepseek-v4-flash",

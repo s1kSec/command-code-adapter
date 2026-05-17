@@ -11,11 +11,9 @@ from cc_adapter.command_code.headers import make_cc_headers
 from cc_adapter.core.errors import AdapterError
 from cc_adapter.providers.shared.model_mapping import (
     MODEL_PROVIDER_MAP,
-    REASONING_EFFORT_MAX,
-    REASONING_EFFORT_MAP,
+    clamp_reasoning_effort,
 )
 from cc_adapter.providers.shared.tool_mapping import normalize_input_args, normalize_schema
-from cc_adapter.core.utils import is_deepseek_v4_model
 
 logger = structlog.get_logger(__name__)
 
@@ -121,18 +119,9 @@ class ResponsesRequestTranslator:
             effort = req.reasoning.get("effort")
             if effort:
                 model_id = self._normalize_model(req.model)
-                if is_deepseek_v4_model(model_id) and effort in ("xhigh", "max"):
-                    params["reasoning_effort"] = "max"
-                    current_system = params.get("system", "")
-                    params["system"] = (
-                        f"{REASONING_EFFORT_MAX}{current_system}" if current_system else REASONING_EFFORT_MAX
-                    )
-                else:
-                    params["reasoning_effort"] = effort
-                    instruction = REASONING_EFFORT_MAP.get(effort, "")
-                    if instruction:
-                        current_system = params.get("system", "")
-                        params["system"] = f"{current_system}\n{instruction}" if current_system else instruction
+                clamped = clamp_reasoning_effort(model_id, effort)
+                if clamped:
+                    params["reasoning_effort"] = clamped
         if req.tools:
             params["tools"] = [
                 {
