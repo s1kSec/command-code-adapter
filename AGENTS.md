@@ -7,6 +7,8 @@ poetry install                    # install deps
 poetry run pytest                 # run full test suite
 poetry run black .                # format (line-length 120)
 poetry run python -m cc_adapter   # start dev server (port 8080, or set CC_ADAPTER_PORT)
+poetry run cc-adapter             # same, via pyproject.toml [tool.poetry.scripts]
+bash run.sh                       # alternative: sources .env, runs uvicorn directly
 docker build -t dgqyushen/command-code-proxy:latest .
 docker compose up -d              # compose.yml + optional compose.override.yml
 ```
@@ -17,7 +19,8 @@ docker compose up -d              # compose.yml + optional compose.override.yml
 - Import: `from cc_adapter.main import app` (FastAPI app)
 - `POST /v1/chat/completions` — OpenAI chat in `providers/openai/router.py`
 - `POST /v1/messages` — Anthropic chat in `providers/anthropic/router.py`
-- `GET /v1/models` — OpenAPI model listing in `main.py` (hardcoded 19 models from `catalog/models_data.py`)
+- `POST /v1/responses` — OpenAI Responses API in `providers/openai/responses_router.py`
+- `GET /v1/models` — OpenAI model listing in `main.py` (hardcoded 19 models from `catalog/models_data.py`)
 - `GET /admin/api/models` — admin model list, no auth
 
 ## Config (env prefix `CC_ADAPTER_`)
@@ -28,9 +31,11 @@ docker compose up -d              # compose.yml + optional compose.override.yml
 | `CC_ADAPTER_ACCESS_KEY` | `access_key` | Bearer token for auth (all endpoints) |
 | `CC_ADAPTER_CC_BASE_URL` | `cc_base_url` | default `https://api.commandcode.ai` |
 | `CC_ADAPTER_DEFAULT_MODEL` | `default_model` | default `deepseek/deepseek-v4-flash` |
+| `CC_ADAPTER_HOST` | `host` | default `0.0.0.0` |
 | `CC_ADAPTER_PORT` | `port` | default `8080` |
-| `CC_ADAPTER_ADMIN_PASSWORD` | `admin_password` | Admin login password |
+| `CC_ADAPTER_LOG_LEVEL` | `log_level` | default `INFO` |
 | `CC_ADAPTER_LOG_FORMAT` | `log_format` | `console` or `json`, default `console` |
+| `CC_ADAPTER_ADMIN_PASSWORD` | `admin_password` | Admin login password |
 
 All fields in `core/config.py:AppConfig`. Uses `.env` file. Config loaded eagerly at module import time.
 
@@ -48,6 +53,7 @@ POST /v1/messages                     POST /v1/chat/completions
 - **Singletons**: `config`, `client`, `translators` owned by `core/runtime.py`.
 - **Retry**: Both paths retry once on empty upstream response. OpenAI retry in `providers/openai/router.py`.
 - **Admin auth**: HMAC-signed token in `core/auth.py` (not JWT); embeds `exp` + password hash prefix.
+- **Version checker**: Background npm polling (`registry.npmjs.org/command-code/latest`), cached 30min, fallback `0.25.2`. See `core/version_checker.py`.
 
 ## Translation quirks — OpenAI
 
@@ -70,8 +76,8 @@ POST /v1/messages                     POST /v1/chat/completions
 
 - **Unit tests**: `pytest` + `pytest-asyncio`. Async tests need `@pytest.mark.asyncio`.
 - Tests use `ASGITransport(app=app)` — no real HTTP, no CC API key.
-- **e2e tests**: `tests/e2e_test.sh` — tests 6 scenarios through Docker:
-  `/v1/models`, OpenAI streaming, Anthropic streaming, OpenAI tool calls, Anthropic tool calls, Anthropic multi-turn tool_result.
+- **e2e tests**: `tests/e2e_test.sh` — tests 7 scenarios through Docker:
+  `/v1/models`, OpenAI streaming, Anthropic streaming, OpenAI tool calls, Anthropic tool calls, Anthropic multi-turn tool_result, OpenAI Responses API.
   Run with `CC_ADAPTER_KEY=<access_key> bash tests/e2e_test.sh`.
 - **Known flaky**: `test_chat_completions_with_invalid_access_key` (cross-test singleton contamination).
 - **Formatter**: black (line-length 120). No linter/typechecker.
@@ -98,4 +104,4 @@ After significant code changes: build → compose up → run `e2e_test.sh` to ve
 1. `poetry run pytest tests/` — unit tests pass
 2. `docker build` — image builds
 3. `docker compose up -d` — container starts
-4. `CC_ADAPTER_KEY=<key> bash tests/e2e_test.sh` — all 6 e2e scenarios pass (重点测试容器)
+4. `CC_ADAPTER_KEY=<key> bash tests/e2e_test.sh` — all 7 e2e scenarios pass (重点测试容器)

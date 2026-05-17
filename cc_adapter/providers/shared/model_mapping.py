@@ -25,6 +25,8 @@ MODEL_REASONING_EFFORTS_MAP: dict[str, list[str]] = {
     "deepseek/deepseek-v4-flash": ["high", "max"],
     "claude-sonnet-4-6": ["low", "medium", "high", "xhigh", "max"],
     "claude-opus-4-7": ["low", "medium", "high", "xhigh", "max"],
+    "claude-opus-4-6": ["low", "medium", "high", "xhigh", "max"],
+    "claude-haiku-4-5-20251001": ["low", "medium", "high"],
     "gpt-5.5": ["low", "medium", "high", "xhigh"],
     "gpt-5.4": ["low", "medium", "high", "xhigh"],
     "gpt-5.3-codex": ["low", "medium", "high", "xhigh"],

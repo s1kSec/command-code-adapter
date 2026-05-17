@@ -18,6 +18,3 @@ def normalize_api_keys(value: str | list[str] | None) -> list[str]:
             pass
         return [value]
     return []
-
-
-

@@ -565,13 +565,19 @@ async function renderConfig() {
     reCard.innerHTML = `
       <details style="cursor:pointer;">
         <summary style="font-weight:600;font-size:14px;padding:12px 0;">
-          Reasoning Effort Max Prompt
+          Model Reasoning Efforts
         </summary>
         <div style="margin-top:8px;font-size:13px;color:var(--text-secondary);">
-          <p><strong>Applicable models:</strong> ${reData.deepseek_v4_models.map(function(m) { return '<code>' + escapeHtml(m) + '</code>'; }).join(', ')}</p>
-          <p style="margin-top:8px;">${escapeHtml(reData.description)}</p>
-          <pre style="margin-top:12px;padding:12px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;line-height:1.5;overflow-x:auto;white-space:pre-wrap;">${escapeHtml(reData.max_prompt)}</pre>
-          <p style="margin-top:8px;font-size:11px;color:var(--text-muted);">Read-only — shown for reference.</p>
+          <p>${escapeHtml(reData.description)}</p>
+          <table style="margin-top:8px;width:100%;border-collapse:collapse;font-size:12px;">
+            <thead><tr style="border-bottom:1px solid var(--border);">
+              <th style="padding:4px 8px;text-align:left;">Model</th>
+              <th style="padding:4px 8px;text-align:left;">Supported Efforts</th>
+            </tr></thead>
+            <tbody>${Object.entries(reData.model_reasoning_efforts).map(function(e) {
+              return '<tr style="border-bottom:1px solid var(--border);"><td style="padding:4px 8px;"><code>' + escapeHtml(e[0]) + '</code></td><td style="padding:4px 8px;">' + escapeHtml(e[1].join(', ')) + '</td></tr>';
+            }).join('')}</tbody>
+          </table>
         </div>
       </details>`;
     el.appendChild(reCard);

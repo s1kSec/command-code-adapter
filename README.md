@@ -106,18 +106,24 @@ client = OpenAI(
 
 | 值 | 说明 |
 |---|---|
-| `"off"` | 关闭推理输出（system prompt 抑制 + 响应端过滤 `reasoning-delta`） |
+| `"off"` | 关闭推理输出（响应端过滤 `reasoning-delta`） |
 | `"low"` | 最小推理 |
-| `"medium"` | 默认推理强度（不注入 system prompt） |
-| `"high"` | 逐步推理思考 |
-| `"xhigh"` | 详细推理思考 |
-| `"max"` | 最大推理强度 |
-| `null` / 不传 | 原行为，不做任何处理 |
+| `"medium"` | 中等推理 |
+| `"high"` | 较高推理 |
+| `"xhigh"` | 高推理 |
+| `"max"` | 最大推理 |
+| `null` / 不传 | 不设推理 |
 
-底层实现采用**双通道策略**：
-1. **CC API 透传**：将 `reasoning_effort` 原样传递给 CC API，未来 CC 原生支持后自动生效
-2. **System Prompt 注入**：根据强度级别向请求追加推理指令（`"medium"` 除外）
-3. **响应端过滤**：`"off"` 模式下过滤 CC 返回的 `reasoning-delta` 事件，剥离 `reasoning_content`
+支持的取值因模型而异。适配器内置了 `MODEL_REASONING_EFFORTS_MAP`（来源：CC v0.26.7 客户端数据），当传入的强度值超出模型支持范围时，自动向上最近值（nearest-higher）映射。模型不在映射表中时不设该参数。
+
+| 模型 | 支持的值 |
+|---|---|
+| deepseek/deepseek-v4-* | high, max |
+| claude-sonnet-4-6, claude-opus-4-6/7 | low, medium, high, xhigh, max |
+| gpt-5.5, gpt-5.4, gpt-5.3-codex | low, medium, high, xhigh |
+| gpt-5.4-mini, claude-haiku-4-5 | low, medium, high |
+
+实现：仅透传 `reasoning_effort` 参数给 CC API，不注入任何 system prompt。响应端保留 `reasoning-delta` 的过滤逻辑（`"off"` 模式下剥离 `reasoning_content`）。
 
 ```bash
 curl http://localhost:8080/v1/chat/completions \
