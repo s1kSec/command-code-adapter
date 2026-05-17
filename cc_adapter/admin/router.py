@@ -274,7 +274,7 @@ async def admin_health(_=Depends(verify_auth)):
     cfg = get_config()
     return {
         "status": "ok",
-        "version": "0.4.4",
+        "version": "0.4.5",
         "uptime": int(time.time() - _start_time),
         "cc_api_key_configured": bool(cfg and cfg.cc_api_key),
     }
