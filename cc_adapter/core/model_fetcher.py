@@ -143,27 +143,9 @@ class ModelFetcher:
         self._provider_map = provider_map
         self._reasoning_efforts = reasoning_efforts
 
-    def _get_latest_version(self) -> str | None:
-        try:
-            from cc_adapter.core.runtime import get_version_checker
-
-            vc = get_version_checker()
-            return vc.get_version()
-        except Exception:
-            return None
-
     async def _fetch_and_update(self) -> None:
         self._last_error = None
         try:
-            npm_data = None
-            latest_version = self._get_latest_version()
-
-            if latest_version and self._cached_version == latest_version and self._fetched_at is not None:
-                self._fetched_at = time.time()
-                self._sync_maps()
-                logger.info("model_fetcher.version_unchanged", version=latest_version)
-                return
-
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(NPM_URL)
                 resp.raise_for_status()
