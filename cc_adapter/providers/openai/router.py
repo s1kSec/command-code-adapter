@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from cc_adapter.core.config import AppConfig
 from cc_adapter.core.errors import AdapterError, AuthenticationError
-from cc_adapter.core.auth import validate_token
+from cc_adapter.core.auth import check_api_access
 from cc_adapter.core.runtime import get_config, get_client, get_request_translator
 from cc_adapter.providers.openai.models import ChatCompletionRequest
 from cc_adapter.providers.openai.response import translate_stream, collect_and_translate_nonstream
@@ -154,21 +154,18 @@ async def chat_completions(req: ChatCompletionRequest, request: Request):
     if cfg and cfg.access_key:
         auth = request.headers.get("Authorization", "")
         token = auth[7:] if auth.startswith("Bearer ") else ""
-        if token != cfg.access_key:
-            if cfg.admin_password and validate_token(token):
-                pass
-            else:
-                logger.warning("auth.failed", reason="invalid_access_key")
-                return JSONResponse(
-                    status_code=401,
-                    content={
-                        "error": {
-                            "message": "Invalid API key",
-                            "type": "invalid_request_error",
-                            "code": "invalid_api_key",
-                        }
-                    },
-                )
+        if not check_api_access(cfg.access_key, token, cfg.admin_password or ""):
+            logger.warning("auth.failed", reason="invalid_access_key")
+            return JSONResponse(
+                status_code=401,
+                content={
+                    "error": {
+                        "message": "Invalid API key",
+                        "type": "invalid_request_error",
+                        "code": "invalid_api_key",
+                    }
+                },
+            )
 
     if cfg is None:
         cfg = AppConfig()

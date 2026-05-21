@@ -30,6 +30,17 @@ def generate_token() -> str:
     return f"{payload}.{sig}"
 
 
+def check_api_access(access_key: str, token: str, admin_password: str = "") -> bool:
+    """Returns True if the token grants API access."""
+    if not access_key:
+        return True
+    if token == access_key:
+        return True
+    if admin_password and validate_token(token):
+        return True
+    return False
+
+
 def validate_token(token: str) -> bool:
     if not _admin_password:
         return True

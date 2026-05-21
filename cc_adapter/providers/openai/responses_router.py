@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from cc_adapter.core.config import AppConfig
 from cc_adapter.core.errors import AdapterError
-from cc_adapter.core.auth import validate_token
+from cc_adapter.core.auth import check_api_access
 from cc_adapter.core.runtime import get_config, get_client
 from cc_adapter.providers.openai.responses_models import ResponseCreateRequest
 from cc_adapter.providers.openai.responses_response import (
@@ -63,12 +63,11 @@ async def create_response(req: ResponseCreateRequest, request: Request):
 
     auth = request.headers.get("Authorization", "")
     token = auth[7:] if auth.startswith("Bearer ") else ""
-    if cfg.access_key and token != cfg.access_key:
-        if not (cfg.admin_password and validate_token(token)):
-            return JSONResponse(
-                status_code=401,
-                content={"error": {"type": "authentication_error", "message": "Invalid API key"}},
-            )
+    if cfg.access_key and not check_api_access(cfg.access_key, token, cfg.admin_password or ""):
+        return JSONResponse(
+            status_code=401,
+            content={"error": {"type": "authentication_error", "message": "Invalid API key"}},
+        )
 
     logger.info(
         "responses.request",

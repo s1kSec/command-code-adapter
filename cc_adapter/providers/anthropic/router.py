@@ -12,6 +12,7 @@ from cc_adapter.providers.anthropic.response import (
     translate_anthropic_stream,
     collect_and_translate_anthropic_nonstream,
 )
+from cc_adapter.core.auth import check_api_access
 from cc_adapter.core.runtime import get_client, get_config, get_anthropic_translator
 from cc_adapter.core.config import AppConfig
 from cc_adapter.core.errors import AdapterError
@@ -88,14 +89,11 @@ async def anthropic_chat(req: AnthropicRequest, request: Request):
     auth = request.headers.get("Authorization", "")
     token = auth[7:] if auth.startswith("Bearer ") else api_key_header
 
-    if cfg.access_key and token != cfg.access_key:
-        from cc_adapter.core.auth import validate_token
-
-        if not (cfg.admin_password and validate_token(token)):
-            return JSONResponse(
-                status_code=401,
-                content={"error": {"type": "authentication_error", "message": "Invalid API key"}},
-            )
+    if cfg.access_key and not check_api_access(cfg.access_key, token, cfg.admin_password or ""):
+        return JSONResponse(
+            status_code=401,
+            content={"error": {"type": "authentication_error", "message": "Invalid API key"}},
+        )
 
     logger.info(
         "anthropic.request",
