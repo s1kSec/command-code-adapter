@@ -25,7 +25,7 @@ _STATIC_CONFIG = {
 }
 
 
-def _make_config(overrides: dict[str, Any] | None = None) -> dict[str, Any]:
+def make_config(overrides: dict[str, Any] | None = None) -> dict[str, Any]:
     base = copy.deepcopy(_STATIC_CONFIG)
     base["date"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
     if overrides:

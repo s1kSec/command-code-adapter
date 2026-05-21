@@ -48,7 +48,7 @@ async def test_ui_config():
 
 
 @pytest.mark.asyncio
-async def test_raw_config_endpoints(tmp_path, monkeypatch):
+async def test_raw_config_endpoints_removed(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     token = generate_token()
 
@@ -57,12 +57,11 @@ async def test_raw_config_endpoints(tmp_path, monkeypatch):
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.get("/admin/api/config/raw", headers={"Authorization": f"Bearer {token}"})
-    assert resp.status_code == 410
-    assert "no longer available" in resp.json()["detail"].lower()
+    assert resp.status_code == 404
 
 
 @pytest.mark.asyncio
-async def test_raw_config_put_returns_410(tmp_path, monkeypatch):
+async def test_raw_config_put_returns_405(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     token = generate_token()
 
@@ -70,7 +69,7 @@ async def test_raw_config_put_returns_410(tmp_path, monkeypatch):
         resp = await client.put(
             "/admin/api/config/raw", json={"content": "test"}, headers={"Authorization": f"Bearer {token}"}
         )
-    assert resp.status_code == 410
+    assert resp.status_code == 405
 
 
 @pytest.mark.asyncio

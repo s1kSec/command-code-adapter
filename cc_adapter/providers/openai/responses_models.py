@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel
 
 
 class ResponseUsage(BaseModel):
@@ -10,53 +10,6 @@ class ResponseUsage(BaseModel):
     output_tokens: int = 0
     output_tokens_details: dict[str, Any] | None = None
     total_tokens: int = 0
-
-
-class ResponseOutputText(BaseModel):
-    type: Literal["output_text"] = "output_text"
-    text: str
-    annotations: list = []
-
-
-class ResponseOutputRefusal(BaseModel):
-    type: Literal["refusal"] = "refusal"
-    refusal: str
-
-
-class ResponseOutputMessageContent(BaseModel):
-    type: Literal["output_text", "refusal"] = "output_text"
-    text: str = ""
-    refusal: str = ""
-    annotations: list = []
-
-
-class ResponseOutputMessage(BaseModel):
-    type: Literal["message"] = "message"
-    id: str
-    role: Literal["assistant"] = "assistant"
-    status: Literal["completed", "in_progress"] = "completed"
-    content: list[dict[str, Any]]
-
-
-class ResponseReasoningContent(BaseModel):
-    type: Literal["reasoning_text"] = "reasoning_text"
-    text: str
-
-
-class ResponseReasoningItem(BaseModel):
-    type: Literal["reasoning"] = "reasoning"
-    id: str
-    content: list[dict[str, Any]]
-    status: Literal["completed", "in_progress"] = "completed"
-
-
-class ResponseFunctionToolCallItem(BaseModel):
-    type: Literal["function_call"] = "function_call"
-    id: str
-    call_id: str
-    name: str
-    arguments: str
-    status: Literal["completed", "in_progress"] = "completed"
 
 
 class ResponseObject(BaseModel):
@@ -102,11 +55,4 @@ class ResponseCreateRequest(BaseModel):
     prompt: dict[str, Any] | None = None
     context_management: list[dict[str, Any]] | None = None
 
-    @field_validator("input", mode="before")
-    @classmethod
-    def coerce_input(cls, v):
-        if isinstance(v, str):
-            return v
-        if isinstance(v, list):
-            return v
-        return v
+

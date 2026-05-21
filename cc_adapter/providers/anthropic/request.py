@@ -7,7 +7,7 @@ from cc_adapter.providers.anthropic.models import AnthropicRequest
 from cc_adapter.command_code.headers import make_cc_headers
 from cc_adapter.providers.shared.model_mapping import resolve_model_id, clamp_reasoning_effort
 from cc_adapter.providers.shared.tool_mapping import make_tool_call_block, make_tool_result_block, normalize_schema
-from cc_adapter.command_code.body import _make_config, make_cc_body
+from cc_adapter.command_code.body import make_config, make_cc_body
 
 logger = structlog.get_logger(__name__)
 
@@ -87,9 +87,9 @@ class AnthropicTranslator:
         if req.temperature is not None:
             params["temperature"] = req.temperature
 
-        return make_cc_body(config=_make_config(), params=params)
+        return make_cc_body(config=make_config(), params=params)
 
-    def _build_messages(self, messages) -> list[dict[str, Any]]:
+    def _build_messages(self, messages: list[Any]) -> list[dict[str, Any]]:
         tool_names: dict[str, str] = {}
         for msg in messages:
             if isinstance(msg.content, list):

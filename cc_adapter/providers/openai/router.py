@@ -37,22 +37,14 @@ def _is_empty_error(data: dict | None) -> bool:
     return bool(data and data.get("error", {}).get("message") == "Upstream model returned an empty response")
 
 
-def _has_visible_delta(data: dict | None) -> bool:
+def _has_streamable_delta(data: dict | None, include_reasoning: bool = False) -> bool:
     if not data:
         return False
     for choice in data.get("choices", []):
         delta = choice.get("delta") or {}
         if delta.get("content") or delta.get("tool_calls"):
             return True
-    return False
-
-
-def _has_streamable_delta(data: dict | None) -> bool:
-    if not data:
-        return False
-    for choice in data.get("choices", []):
-        delta = choice.get("delta") or {}
-        if delta.get("content") or delta.get("reasoning_content") or delta.get("tool_calls"):
+        if include_reasoning and delta.get("reasoning_content"):
             return True
     return False
 
@@ -90,9 +82,10 @@ async def _stream_with_retry(
         should_retry = False
         emitted_visible_delta = False
 
+        completed_normally = True
         async for chunk in translator:
             data = _chunk_payload(chunk)
-            if _has_visible_delta(data):
+            if _has_streamable_delta(data):
                 emitted_visible_delta = True
                 if first_token_latency is None:
                     first_token_latency = time.time() - start_time
@@ -101,11 +94,12 @@ async def _stream_with_retry(
                 logger.warning("Empty upstream response (attempt 1/2), retrying...")
                 await translator.aclose()
                 should_retry = True
+                completed_normally = False
                 break
 
             if buffer_until_visible:
                 buffered_chunks.append(chunk)
-                if _has_streamable_delta(data):
+                if _has_streamable_delta(data, include_reasoning=True):
                     for buffered_chunk in buffered_chunks:
                         yield buffered_chunk
                         flushed_chunks = True
@@ -115,7 +109,8 @@ async def _stream_with_retry(
 
             yield chunk
             flushed_chunks = True
-        else:
+
+        if completed_normally:
             for buffered_chunk in buffered_chunks:
                 yield buffered_chunk
                 flushed_chunks = True

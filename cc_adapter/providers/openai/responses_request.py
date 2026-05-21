@@ -6,7 +6,7 @@ from typing import Any
 import structlog
 
 from cc_adapter.providers.openai.responses_models import ResponseCreateRequest
-from cc_adapter.command_code.body import _make_config, make_cc_body
+from cc_adapter.command_code.body import make_config, make_cc_body
 from cc_adapter.command_code.headers import make_cc_headers
 from cc_adapter.core.errors import AdapterError
 from cc_adapter.providers.shared.model_mapping import (
@@ -130,7 +130,7 @@ class ResponsesRequestTranslator:
         tool_choice = self._translate_tool_choice(req.tool_choice, req.tools)
         if tool_choice is not None:
             params["tool_choice"] = tool_choice
-        return make_cc_body(config=_make_config(), params=params)
+        return make_cc_body(config=make_config(), params=params)
 
     @staticmethod
     def _translate_tool_choice(

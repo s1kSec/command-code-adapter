@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     from cc_adapter.providers.openai.request import RequestTranslator
     from cc_adapter.providers.anthropic.request import AnthropicTranslator
     from cc_adapter.core.version_checker import VersionChecker
+    from cc_adapter.core.model_fetcher import ModelFetcher
 
 def create_client(cfg: AppConfig, *, timeout: float | None = None) -> CommandCodeClient:
     from cc_adapter.command_code.client import CommandCodeClient

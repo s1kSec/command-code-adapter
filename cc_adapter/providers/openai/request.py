@@ -13,7 +13,7 @@ from cc_adapter.providers.shared.model_mapping import (
     clamp_reasoning_effort,
     NOT_SUPPORTED_PARAMS,
 )
-from cc_adapter.command_code.body import make_cc_body, _make_config
+from cc_adapter.command_code.body import make_cc_body, make_config
 from cc_adapter.command_code.headers import make_cc_headers
 
 logger = structlog.get_logger(__name__)
@@ -56,7 +56,7 @@ class RequestTranslator:
             self._parse_tool_arguments(tool_call.function.arguments),
         )
 
-    def _split_messages(self, messages):
+    def _split_messages(self, messages: list[Any]) -> tuple[str | None, list[dict[str, Any]]]:
         system_prompt = None
         others = []
         tool_names_by_id: dict[str, str] = {}
@@ -120,7 +120,7 @@ class RequestTranslator:
             tool_choice = self._translate_tool_choice(req.tool_choice)
             if tool_choice is not None:
                 params["tool_choice"] = tool_choice
-        return make_cc_body(config=_make_config(), params=params)
+        return make_cc_body(config=make_config(), params=params)
 
     def _build_headers(self) -> dict[str, str]:
         return make_cc_headers()

@@ -23,7 +23,7 @@ from cc_adapter.core.runtime import (
 )
 from cc_adapter.core.config import AppConfig, DEFAULT_MODEL
 from cc_adapter.core.constants import VERSION
-from cc_adapter.command_code.body import make_cc_body, _make_config
+from cc_adapter.command_code.body import make_cc_body, make_config
 from cc_adapter.admin.usage_client import query_all_tokens, query_daily_usage
 from cc_adapter.command_code.headers import make_cc_headers
 from cc_adapter.core.utils import normalize_api_keys
@@ -52,13 +52,10 @@ class ConfigUpdate(BaseModel):
 
 
 def _primary_api_key(value: str | list[str] | None) -> str:
-    from cc_adapter.core.utils import normalize_api_keys
-
     keys = normalize_api_keys(value)
     return keys[0] if keys else ""
 
 
-_CONFIG_FIELDS = {"cc_api_key", "cc_base_url", "host", "port", "log_level", "log_format", "default_model"}
 _CONFIG_CLIENT_FIELDS = {"cc_api_key", "cc_base_url"}
 
 
@@ -178,20 +175,6 @@ async def update_config(update: ConfigUpdate, _=Depends(verify_auth)):
     return await get_config_endpoint()
 
 
-@router.get("/config/raw")
-async def get_raw_config(_=Depends(verify_auth)):
-    raise HTTPException(status_code=410, detail="Raw config editing is no longer available")
-
-
-class RawConfigUpdate(BaseModel):
-    content: str
-
-
-@router.put("/config/raw")
-async def update_raw_config(update: RawConfigUpdate, _=Depends(verify_auth)):
-    raise HTTPException(status_code=410, detail="Raw config editing is no longer available")
-
-
 @router.post("/verify-key")
 async def verify_key(_=Depends(verify_auth)):
     cfg = get_config()
@@ -204,7 +187,7 @@ async def verify_key(_=Depends(verify_auth)):
     test_client = create_client(cfg, timeout=10.0)
     try:
         test_body = make_cc_body(
-            config=_make_config(
+            config=make_config(
                 {"workingDir": "/tmp", "structure": [], "isGitRepo": False, "date": "2026-01-01T00:00:00Z"}
             ),
             params={
