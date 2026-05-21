@@ -13,12 +13,11 @@ from cc_adapter.command_code.client import CommandCodeClient
 from cc_adapter.core.logging import configure_logging, CorrelationIDMiddleware
 from cc_adapter.core.errors import AdapterError
 from cc_adapter.core.auth import set_password
-from cc_adapter.core.runtime import init as runtime_init, get_client as get_runtime_client, get_config
+from cc_adapter.core.runtime import init as runtime_init, get_client as get_runtime_client, get_config, get_models_data, get_model_fetcher
 from cc_adapter.providers.openai.router import router as openai_router
 from cc_adapter.providers.anthropic.router import router as anthropic_router
 from cc_adapter.providers.openai.responses_router import router as responses_router
 from cc_adapter.admin import router as admin_router
-from cc_adapter.catalog.models_data import MODELS_DATA
 
 logger = structlog.get_logger(__name__)
 
@@ -36,6 +35,7 @@ async def lifespan(app: FastAPI):
     from cc_adapter.core.runtime import get_version_checker
 
     get_version_checker().get_version()  # triggers background fetch via _fetch_task guard
+    get_model_fetcher().refresh()
 
     yield
     cc_client = get_runtime_client()
@@ -68,7 +68,7 @@ app.mount("/admin", admin_static, name="admin_static")
 
 @app.get("/v1/models")
 async def list_models():
-    return {"object": "list", "data": MODELS_DATA}
+    return {"object": "list", "data": get_models_data()}
 
 
 @app.exception_handler(AdapterError)
