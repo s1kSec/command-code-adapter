@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
 import structlog
+import tempfile
 import time
 from datetime import date as date_type
 from pathlib import Path
@@ -9,6 +11,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel
 
+from cc_adapter.command_code.client import CommandCodeClient
 from cc_adapter.core.auth import generate_token, validate_token
 from cc_adapter.core.runtime import (
     get_config,
@@ -323,7 +326,20 @@ def _update_env_file(update: ConfigUpdate) -> None:
                 lines.append(f"{env_key}={json.dumps(value)}\n")
             else:
                 lines.append(f"{env_key}={update_map[field_name]}\n")
-    env_path.write_text("".join(lines))
+
+    # Atomic write
+    content = "".join(lines)
+    fd, tmp_path = tempfile.mkstemp(suffix=".env", prefix=".env_", text=True)
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(content)
+        os.replace(tmp_path, str(env_path))
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
 
 
 def _recreate_client(cfg: AppConfig) -> CommandCodeClient | None:

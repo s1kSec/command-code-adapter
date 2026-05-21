@@ -4,10 +4,10 @@ from cc_adapter.core.auth import set_password, validate_token, generate_token
 from cc_adapter.main import app
 
 
-def test_no_password_always_valid():
+def test_no_password_never_valid():
     set_password("")
     token = "anything"
-    assert validate_token(token) is True
+    assert validate_token(token) is False
 
 
 def test_with_password_requires_matching_token():

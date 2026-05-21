@@ -43,7 +43,7 @@ def check_api_access(access_key: str, token: str, admin_password: str = "") -> b
 
 def validate_token(token: str) -> bool:
     if not _admin_password:
-        return True
+        return False
     try:
         payload_b64, sig = token.split(".", 1)
         if not hmac.compare_digest(_sign(payload_b64), sig):
@@ -54,5 +54,5 @@ def validate_token(token: str) -> bool:
         if payload.get("pwh") != _password_hash():
             return False
         return True
-    except Exception:
+    except (ValueError, KeyError, IndexError, TypeError, json.JSONDecodeError):
         return False
