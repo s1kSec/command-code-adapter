@@ -13,6 +13,7 @@ from cc_adapter.providers.anthropic.response import (
     collect_and_translate_anthropic_nonstream,
 )
 from cc_adapter.core.auth import check_api_access
+from cc_adapter.core.retry import retry_on_empty
 from cc_adapter.core.runtime import get_client, get_config, get_anthropic_translator
 from cc_adapter.core.config import AppConfig
 from cc_adapter.core.errors import AdapterError
@@ -63,22 +64,6 @@ def _anthropic_sse_error(message: str) -> str:
     return f"event: error\ndata: {data}\n\n"
 
 
-async def _anthropic_nonstream_with_retry(
-    client: CommandCodeClient,
-    body: dict,
-    headers: dict,
-    model: str,
-):
-    for attempt in range(2):
-        cc_stream = client.generate(body, headers)
-        try:
-            return await collect_and_translate_anthropic_nonstream(cc_stream, model)
-        except AdapterError as e:
-            if attempt == 0 and "empty response" in e.message.lower():
-                logger.warning("upstream.retry", reason="empty_response", attempt=1, max_attempts=2)
-                continue
-            raise
-
 
 @router.post("/v1/messages")
 async def anthropic_chat(req: AnthropicRequest, request: Request):
@@ -126,7 +111,12 @@ async def anthropic_chat(req: AnthropicRequest, request: Request):
                 },
             )
         else:
-            return await _anthropic_nonstream_with_retry(current_client, cc_body, cc_headers, req.model)
+            return await retry_on_empty(
+                lambda: current_client.generate(cc_body, cc_headers),
+                lambda stream: collect_and_translate_anthropic_nonstream(stream, req.model),
+                logger,
+                "anthropic.nonstream",
+            )
     except AdapterError as e:
         return JSONResponse(
             status_code=e.status_code,

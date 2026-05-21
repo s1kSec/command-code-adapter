@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from cc_adapter.core.config import AppConfig
 from cc_adapter.core.errors import AdapterError, AuthenticationError
 from cc_adapter.core.auth import check_api_access
+from cc_adapter.core.retry import retry_on_empty
 from cc_adapter.core.runtime import get_config, get_client, get_request_translator
 from cc_adapter.providers.openai.models import ChatCompletionRequest
 from cc_adapter.providers.openai.response import translate_stream, collect_and_translate_nonstream
@@ -127,25 +128,6 @@ async def _stream_with_retry(
     _log_stream_metrics(model, empty_retry_count, retry_latencies, first_token_latency)
 
 
-async def _nonstream_with_retry(
-    generate_fn,
-    model: str,
-    start_time: float,
-    reasoning_effort: str | None = None,
-    tools_available: bool = False,
-):
-    for attempt in range(2):
-        cc_stream = generate_fn()
-        try:
-            return await collect_and_translate_nonstream(
-                cc_stream, model, start_time, reasoning_effort, tools_available
-            )
-        except AdapterError as e:
-            if attempt == 0 and "empty response" in e.message.lower():
-                logger.warning("Empty upstream response (attempt 1/2), retrying...")
-                continue
-            raise
-
 
 @router.post("/v1/chat/completions")
 async def chat_completions(req: ChatCompletionRequest, request: Request):
@@ -213,10 +195,9 @@ async def chat_completions(req: ChatCompletionRequest, request: Request):
             },
         )
     else:
-        return await _nonstream_with_retry(
+        return await retry_on_empty(
             lambda: current_client.generate(cc_body, cc_headers),
-            req.model,
-            start_time,
-            req.reasoning_effort,
-            tools_available,
+            lambda stream: collect_and_translate_nonstream(stream, req.model, start_time, req.reasoning_effort, tools_available),
+            logger,
+            "openai.nonstream",
         )

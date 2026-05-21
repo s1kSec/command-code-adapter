@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from cc_adapter.core.config import AppConfig
 from cc_adapter.core.errors import AdapterError
 from cc_adapter.core.auth import check_api_access
+from cc_adapter.core.retry import retry_on_empty
 from cc_adapter.core.runtime import get_config, get_client
 from cc_adapter.providers.openai.responses_models import ResponseCreateRequest
 from cc_adapter.providers.openai.responses_response import (
@@ -43,17 +44,6 @@ async def _responses_stream_with_retry(generate_fn, model: str):
             return
         return
 
-
-async def _responses_nonstream_with_retry(generate_fn, model: str):
-    for attempt in range(2):
-        cc_stream = generate_fn()
-        try:
-            return await collect_and_translate_responses_nonstream(cc_stream, model)
-        except AdapterError as e:
-            if attempt == 0 and "empty response" in e.message.lower():
-                logger.warning("responses.nonstream.retry", reason="empty_response", attempt=1, max_attempts=2)
-                continue
-            raise
 
 
 @router.post("/v1/responses")
@@ -109,9 +99,11 @@ async def create_response(req: ResponseCreateRequest, request: Request):
                 },
             )
         else:
-            result = await _responses_nonstream_with_retry(
+            result = await retry_on_empty(
                 lambda: current_client.generate(cc_body, cc_headers),
-                req.model,
+                lambda stream: collect_and_translate_responses_nonstream(stream, req.model),
+                logger,
+                "responses.nonstream",
             )
             return result
     except AdapterError as e:
