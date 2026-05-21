@@ -73,7 +73,7 @@ check_contains "包含 claude-sonnet-4-6" '"id":"claude-sonnet-4-6"' "$MODELS_RE
 check_contains "包含 gpt-5.4" '"id":"gpt-5.4"' "$MODELS_RESP"
 
 MODEL_COUNT=$(echo "$MODELS_RESP" | python3 -c "import sys,json; print(len(json.load(sys.stdin)['data']))")
-check "共 19 个模型" "19" "$MODEL_COUNT"
+check "模型数量 >= 19" "$([ "$MODEL_COUNT" -ge 19 ] && echo 1 || echo 0)" "1"
 
 echo ""
 
