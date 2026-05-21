@@ -10,7 +10,14 @@ from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel
 
 from cc_adapter.core.auth import generate_token, validate_token
-from cc_adapter.core.runtime import get_config, get_client, get_provider_map, get_reasoning_efforts, get_model_fetcher, init as state_init
+from cc_adapter.core.runtime import (
+    get_config,
+    get_client,
+    get_provider_map,
+    get_reasoning_efforts,
+    get_model_fetcher,
+    init as state_init,
+)
 from cc_adapter.core.config import AppConfig, DEFAULT_MODEL
 from cc_adapter.command_code.client import CommandCodeClient
 from cc_adapter.command_code.body import make_cc_body, _make_config

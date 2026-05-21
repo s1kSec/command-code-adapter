@@ -85,6 +85,7 @@ def get_model_fetcher() -> ModelFetcher:
         from cc_adapter.core.model_fetcher import ModelFetcher
 
         _model_fetcher = ModelFetcher()
+        _model_fetcher._sync_maps()
     return _model_fetcher
 
 

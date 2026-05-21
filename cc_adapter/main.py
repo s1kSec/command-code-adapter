@@ -13,7 +13,13 @@ from cc_adapter.command_code.client import CommandCodeClient
 from cc_adapter.core.logging import configure_logging, CorrelationIDMiddleware
 from cc_adapter.core.errors import AdapterError
 from cc_adapter.core.auth import set_password
-from cc_adapter.core.runtime import init as runtime_init, get_client as get_runtime_client, get_config, get_models_data, get_model_fetcher
+from cc_adapter.core.runtime import (
+    init as runtime_init,
+    get_client as get_runtime_client,
+    get_config,
+    get_models_data,
+    get_model_fetcher,
+)
 from cc_adapter.providers.openai.router import router as openai_router
 from cc_adapter.providers.anthropic.router import router as anthropic_router
 from cc_adapter.providers.openai.responses_router import router as responses_router

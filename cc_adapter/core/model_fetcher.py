@@ -51,6 +51,7 @@ class ModelFetcher:
         self._models_data = list(MODELS_DATA)
         self._provider_map = dict(MODEL_PROVIDER_MAP)
         self._reasoning_efforts = dict(MODEL_REASONING_EFFORTS_MAP)
+        self._static_provider_map = dict(MODEL_PROVIDER_MAP)
 
         self._load_cache()
 
@@ -79,6 +80,11 @@ class ModelFetcher:
                     self._fetch_task = loop.create_task(self._fetch_and_update())
             except RuntimeError:
                 pass
+
+    def _sync_maps(self) -> None:
+        from cc_adapter.providers.shared.model_mapping import refresh_maps
+
+        refresh_maps(provider_map=self._provider_map, reasoning_efforts=self._reasoning_efforts)
 
     def _is_stale(self) -> bool:
         if self._fetched_at is None:
@@ -130,6 +136,9 @@ class ModelFetcher:
             if efforts:
                 reasoning_efforts[model_id] = list(efforts)
 
+        for k, v in self._static_provider_map.items():
+            provider_map.setdefault(k, v)
+
         self._models_data = models
         self._provider_map = provider_map
         self._reasoning_efforts = reasoning_efforts
@@ -151,6 +160,7 @@ class ModelFetcher:
 
             if latest_version and self._cached_version == latest_version and self._fetched_at is not None:
                 self._fetched_at = time.time()
+                self._sync_maps()
                 logger.info("model_fetcher.version_unchanged", version=latest_version)
                 return
 
@@ -165,6 +175,7 @@ class ModelFetcher:
 
             if self._cached_version == latest_version and self._fetched_at is not None:
                 self._fetched_at = time.time()
+                self._sync_maps()
                 logger.info("model_fetcher.version_unchanged", version=latest_version)
                 return
 
@@ -191,10 +202,7 @@ class ModelFetcher:
             self._build_maps(entries)
             self._cached_version = latest_version
             self._fetched_at = time.time()
-
-            from cc_adapter.providers.shared.model_mapping import refresh_maps
-
-            refresh_maps(provider_map=self._provider_map, reasoning_efforts=self._reasoning_efforts)
+            self._sync_maps()
             logger.info("model_fetcher.updated", version=latest_version, count=len(entries))
 
         except Exception as e:
@@ -216,9 +224,7 @@ class ModelFetcher:
                 raise ValueError("index.mjs not found in tarball")
 
             entries: list[dict] = []
-            for m in re.finditer(
-                r'(\w+)\s*:\s*\{\s*id\s*:\s*["\x60]([^"\x60]+)["\x60]', mjs
-            ):
+            for m in re.finditer(r'(\w+)\s*:\s*\{\s*id\s*:\s*["\x60]([^"\x60]+)["\x60]', mjs):
                 model_id = m.group(2)
                 if not (model_id.startswith(MODEL_PREFIXES) or "/" in model_id):
                     continue
@@ -228,7 +234,7 @@ class ModelFetcher:
 
                 ctx_match = re.search(r"contextWindow\s*:\s*([^,\s}]+)", obj_text)
                 ctx_raw = ctx_match.group(1).strip() if ctx_match else None
-                context_window = int(ctx_raw) if ctx_raw else None
+                context_window = int(float(ctx_raw)) if ctx_raw else None
 
                 re_match = re.search(r"reasoningEfforts\s*:\s*(\[[^\]]+\])", obj_text)
                 efforts = json.loads(re_match.group(1)) if re_match else None
