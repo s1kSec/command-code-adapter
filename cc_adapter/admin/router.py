@@ -10,10 +10,9 @@ from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel
 
 from cc_adapter.core.auth import generate_token, validate_token
-from cc_adapter.core.runtime import get_config, get_client, init as state_init
+from cc_adapter.core.runtime import get_config, get_client, get_provider_map, get_reasoning_efforts, get_model_fetcher, init as state_init
 from cc_adapter.core.config import AppConfig, DEFAULT_MODEL
 from cc_adapter.command_code.client import CommandCodeClient
-from cc_adapter.providers.shared.model_mapping import MODEL_PROVIDER_MAP, MODEL_REASONING_EFFORTS_MAP
 from cc_adapter.command_code.body import make_cc_body, _make_config
 from cc_adapter.admin.usage_client import query_all_tokens, query_daily_usage
 from cc_adapter.command_code.headers import make_cc_headers
@@ -133,7 +132,7 @@ def _format_model_display_name(bare_name: str) -> str:
 @router.get("/models")
 async def list_models():
     models = []
-    for bare_name, canonical_id in MODEL_PROVIDER_MAP.items():
+    for bare_name, canonical_id in get_provider_map().items():
         display_name = _format_model_display_name(bare_name)
         provider = canonical_id.split("/")[0]
         models.append(
@@ -149,12 +148,17 @@ async def list_models():
 @router.get("/reasoning-effort")
 async def get_reasoning_effort_config(_=Depends(verify_auth)):
     return {
-        "model_reasoning_efforts": MODEL_REASONING_EFFORTS_MAP,
+        "model_reasoning_efforts": get_reasoning_efforts(),
         "description": (
             "Per-model supported reasoning_effort levels. "
             "Values not in the list are clamped to the nearest higher level."
         ),
     }
+
+
+@router.get("/models/status")
+async def models_status():
+    return get_model_fetcher().get_status()
 
 
 @router.put("/config")
