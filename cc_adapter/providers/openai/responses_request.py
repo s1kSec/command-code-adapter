@@ -13,7 +13,7 @@ from cc_adapter.providers.shared.model_mapping import (
     resolve_model_id,
     clamp_reasoning_effort,
 )
-from cc_adapter.providers.shared.tool_mapping import normalize_input_args, normalize_schema
+from cc_adapter.providers.shared.tool_mapping import make_tool_call_block, make_tool_result_block, normalize_schema
 
 logger = structlog.get_logger(__name__)
 
@@ -246,12 +246,7 @@ class ResponsesRequestTranslator:
                 tid, tool_name, args = self._parse_message_tool_call(tool_call)
                 tool_names[tid] = tool_name
                 content_blocks.append(
-                    {
-                        "type": "tool-call",
-                        "toolCallId": tid,
-                        "toolName": tool_name,
-                        "input": normalize_input_args(args),
-                    }
+                    make_tool_call_block(tid, tool_name, args)
                 )
         if not content_blocks:
             raise AdapterError(
@@ -329,14 +324,11 @@ class ResponsesRequestTranslator:
             {
                 "role": "assistant",
                 "content": [
-                    {
-                        "type": "tool-call",
-                        "toolCallId": call_id,
-                        "toolName": name,
-                        "input": normalize_input_args(
-                            self._parse_json_args(item.get("arguments", "{}"), "function_call arguments")
-                        ),
-                    }
+                    make_tool_call_block(
+                        call_id,
+                        name,
+                        self._parse_json_args(item.get("arguments", "{}"), "function_call arguments"),
+                    )
                 ],
             }
         ]
@@ -346,16 +338,16 @@ class ResponsesRequestTranslator:
     ) -> list[dict[str, Any]]:
         call_id = item.get("call_id", "")
         output = item.get("output", "")
+        output_value = output if isinstance(output, str) else json.dumps(output)
         return [
             {
                 "role": "tool",
                 "content": [
-                    {
-                        "type": "tool-result",
-                        "toolCallId": call_id,
-                        "toolName": tool_names.get(call_id, "unknown"),
-                        "output": {"type": "text", "value": output if isinstance(output, str) else json.dumps(output)},
-                    }
+                    make_tool_result_block(
+                        call_id,
+                        tool_names.get(call_id, "unknown"),
+                        output_value,
+                    )
                 ],
             }
         ]

@@ -6,7 +6,7 @@ from typing import Any
 from cc_adapter.providers.anthropic.models import AnthropicRequest
 from cc_adapter.command_code.headers import make_cc_headers
 from cc_adapter.providers.shared.model_mapping import resolve_model_id, clamp_reasoning_effort
-from cc_adapter.providers.shared.tool_mapping import normalize_input_args, normalize_schema
+from cc_adapter.providers.shared.tool_mapping import make_tool_call_block, make_tool_result_block, normalize_schema
 from cc_adapter.command_code.body import _make_config, make_cc_body
 
 logger = logging.getLogger(__name__)
@@ -118,12 +118,11 @@ class AnthropicTranslator:
                 result.append({"type": "text", "text": block.get("text", "")})
             elif block_type == "tool_use":
                 result.append(
-                    {
-                        "type": "tool-call",
-                        "toolCallId": block.get("id", ""),
-                        "toolName": block.get("name", ""),
-                        "input": normalize_input_args(block.get("input", {})),
-                    }
+                    make_tool_call_block(
+                        block.get("id", ""),
+                        block.get("name", ""),
+                        block.get("input", {}),
+                    )
                 )
             elif block_type == "tool_result":
                 raw_content = block.get("content", "")
@@ -132,11 +131,11 @@ class AnthropicTranslator:
                         b.get("text", "") for b in raw_content if isinstance(b, dict) and b.get("type") == "text"
                     )
                 result.append(
-                    {
-                        "type": "tool-result",
-                        "toolCallId": block.get("tool_use_id", ""),
-                        "output": {"type": "text", "value": raw_content},
-                    }
+                    make_tool_result_block(
+                        block.get("tool_use_id", ""),
+                        "",
+                        raw_content,
+                    )
                 )
             elif block_type == "image":
                 logger.warning("Image content block not supported, skipping")

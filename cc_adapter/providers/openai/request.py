@@ -7,7 +7,7 @@ import logging
 from typing import Any
 
 from cc_adapter.providers.openai.models import ChatCompletionRequest
-from cc_adapter.providers.shared.tool_mapping import normalize_input_args, normalize_schema
+from cc_adapter.providers.shared.tool_mapping import make_tool_call_block, make_tool_result_block, normalize_schema
 from cc_adapter.providers.shared.model_mapping import (
     resolve_model_id,
     clamp_reasoning_effort,
@@ -63,12 +63,11 @@ class RequestTranslator:
         return parsed if isinstance(parsed, dict) else {}
 
     def _tool_call_block(self, tool_call) -> dict[str, Any]:
-        return {
-            "type": "tool-call",
-            "toolCallId": tool_call.id,
-            "toolName": tool_call.function.name,
-            "input": normalize_input_args(self._parse_tool_arguments(tool_call.function.arguments)),
-        }
+        return make_tool_call_block(
+            tool_call.id,
+            tool_call.function.name,
+            self._parse_tool_arguments(tool_call.function.arguments),
+        )
 
     def _split_messages(self, messages):
         system_prompt = None
@@ -82,12 +81,11 @@ class RequestTranslator:
                 d: dict[str, Any] = {
                     "role": "tool",
                     "content": [
-                        {
-                            "type": "tool-result",
-                            "toolCallId": tool_call_id,
-                            "toolName": tool_names_by_id.get(tool_call_id, "unknown"),
-                            "output": {"type": "text", "value": msg.content or ""},
-                        }
+                        make_tool_result_block(
+                            tool_call_id,
+                            tool_names_by_id.get(tool_call_id, "unknown"),
+                            msg.content or "",
+                        )
                     ],
                 }
                 others.append(d)

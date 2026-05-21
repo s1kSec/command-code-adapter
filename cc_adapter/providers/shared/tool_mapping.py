@@ -62,6 +62,24 @@ def normalize_args(tool_name: str, args: dict, map_path: bool = True) -> dict:
     return result
 
 
+def make_tool_call_block(tool_call_id: str, tool_name: str, input_args: dict) -> dict:
+    return {
+        "type": "tool-call",
+        "toolCallId": tool_call_id,
+        "toolName": tool_name,
+        "input": normalize_input_args(input_args),
+    }
+
+
+def make_tool_result_block(tool_call_id: str, tool_name: str, value: str) -> dict:
+    return {
+        "type": "tool-result",
+        "toolCallId": tool_call_id,
+        "toolName": tool_name,
+        "output": {"type": "text", "value": value},
+    }
+
+
 def normalize_input_args(args: dict) -> dict:
     if not isinstance(args, dict):
         return args
