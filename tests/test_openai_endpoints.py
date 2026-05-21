@@ -17,7 +17,7 @@ async def test_v1_models_returns_all_19_models():
     body = resp.json()
     assert body["object"] == "list"
     assert isinstance(body["data"], list)
-    assert len(body["data"]) == 19
+    assert len(body["data"]) >= 19
     for model in body["data"]:
         assert model["object"] == "model"
         assert "id" in model

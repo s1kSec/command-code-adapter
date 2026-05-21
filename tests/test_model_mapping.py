@@ -39,3 +39,31 @@ class TestClampReasoningEffort:
 
     def test_unknown_effort_falls_back_to_max(self):
         assert clamp_reasoning_effort("deepseek/deepseek-v4-flash", "extreme") == "max"
+
+    def test_refresh_maps_updates_reasoning_efforts(self):
+        from cc_adapter.providers.shared.model_mapping import (
+            MODEL_REASONING_EFFORTS_MAP,
+            refresh_maps,
+        )
+
+        original = dict(MODEL_REASONING_EFFORTS_MAP)
+        try:
+            refresh_maps(reasoning_efforts={"test/model": ["high"]})
+            assert "test/model" in MODEL_REASONING_EFFORTS_MAP
+            assert MODEL_REASONING_EFFORTS_MAP["test/model"] == ["high"]
+        finally:
+            refresh_maps(reasoning_efforts=original)
+
+    def test_refresh_maps_updates_provider_map(self):
+        from cc_adapter.providers.shared.model_mapping import (
+            MODEL_PROVIDER_MAP,
+            refresh_maps,
+        )
+
+        original = dict(MODEL_PROVIDER_MAP)
+        try:
+            refresh_maps(provider_map={"test-short": "test/model"})
+            assert "test-short" in MODEL_PROVIDER_MAP
+            assert MODEL_PROVIDER_MAP["test-short"] == "test/model"
+        finally:
+            refresh_maps(provider_map=original)
