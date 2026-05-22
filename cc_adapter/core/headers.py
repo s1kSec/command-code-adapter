@@ -26,5 +26,14 @@ def auth_error_response(protocol: str = "openai") -> JSONResponse:
 
 
 def missing_key_response(protocol: str = "openai") -> JSONResponse:
-    body = {"error": {"type": "authentication_error", "message": "CC_ADAPTER_CC_API_KEY is not configured"}}
+    if protocol == "anthropic":
+        body = {"error": {"type": "authentication_error", "message": "CC_ADAPTER_CC_API_KEY is not configured"}}
+    else:
+        body = {
+            "error": {
+                "message": "CC_ADAPTER_CC_API_KEY is not configured",
+                "type": "invalid_request_error",
+                "code": "invalid_api_key",
+            }
+        }
     return JSONResponse(status_code=401, content=body)

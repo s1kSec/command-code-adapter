@@ -43,7 +43,13 @@ def get_or_create_client() -> CommandCodeClient:
     if _cc_client is None:
         from cc_adapter.core.config import AppConfig
 
-        _cc_client = create_client(get_config() or AppConfig())
+        config = get_config()
+        if config is None:
+            import structlog
+
+            structlog.get_logger(__name__).warning("runtime.client_fallback_default_config")
+            config = AppConfig()
+        _cc_client = create_client(config)
     return _cc_client
 
 
