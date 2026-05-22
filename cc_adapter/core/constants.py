@@ -10,4 +10,4 @@ NPM_URL: str = "https://registry.npmjs.org/command-code/latest"
 NPM_CACHE_TTL: int = 1800
 NPM_ERROR_BACKOFF: int = 60
 
-VERSION: str = "0.5.0"
+VERSION: str = "0.6.0"
