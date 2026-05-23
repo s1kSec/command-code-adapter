@@ -1,29 +1,23 @@
 from __future__ import annotations
 
-import json
-import os
 import structlog
-import tempfile
 import time
 from datetime import date as date_type
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel
 
-from cc_adapter.command_code.client import CommandCodeClient
 from cc_adapter.core.auth import generate_token, validate_token
 from cc_adapter.core.runtime import (
     get_config,
-    get_client,
     get_provider_map,
     get_reasoning_efforts,
     get_model_fetcher,
-    init as state_init,
 )
-from cc_adapter.core.config import AppConfig, DEFAULT_MODEL
+from cc_adapter.core.config import DEFAULT_MODEL
 from cc_adapter.core.constants import VERSION
 from cc_adapter.command_code.body import make_cc_body, make_config
+from cc_adapter.admin.config_manager import ConfigManager
 from cc_adapter.admin.usage_client import query_all_tokens, query_daily_usage
 from cc_adapter.command_code.headers import make_cc_headers
 from cc_adapter.core.utils import normalize_api_keys
@@ -49,25 +43,6 @@ class ConfigUpdate(BaseModel):
     log_level: str | None = None
     log_format: str | None = None
     default_model: str | None = None
-
-
-def _primary_api_key(value: str | list[str] | None) -> str:
-    keys = normalize_api_keys(value)
-    return keys[0] if keys else ""
-
-
-_CONFIG_CLIENT_FIELDS = {"cc_api_key", "cc_base_url"}
-
-
-def _apply_config_fields(cfg: AppConfig, updates: dict[str, object]) -> bool:
-    changed_client = False
-    for field, value in updates.items():
-        if field == "cc_api_key":
-            value = normalize_api_keys(value)
-        setattr(cfg, field, value)
-        if field in _CONFIG_CLIENT_FIELDS:
-            changed_client = True
-    return changed_client
 
 
 async def verify_auth(authorization: str | None = Header(None)):
@@ -170,15 +145,18 @@ async def models_status():
 
 @router.put("/config")
 async def update_config(update: ConfigUpdate, _=Depends(verify_auth)):
-    _update_env_file(update)
-    await _apply_config_update(update)
+    update_dict = update.model_dump(exclude_none=True)
+    ConfigManager.update_env_file(update_dict)
+    await ConfigManager.apply_config_update(update_dict)
     return await get_config_endpoint()
 
 
 @router.post("/verify-key")
 async def verify_key(_=Depends(verify_auth)):
     cfg = get_config()
-    if not cfg or not _primary_api_key(cfg.cc_api_key):
+    keys = normalize_api_keys(cfg.cc_api_key) if cfg else []
+    primary_key = keys[0] if keys else ""
+    if not cfg or not primary_key:
         result = {"valid": False, "message": "No API Key configured"}
         logger.info("admin.verify_key", valid=result["valid"])
         return result
@@ -270,81 +248,3 @@ async def admin_health(_=Depends(verify_auth)):
         "uptime": int(time.time() - _start_time),
         "cc_api_key_configured": bool(cfg and cfg.cc_api_key),
     }
-
-
-def _update_env_file(update: ConfigUpdate) -> None:
-    env_path = Path(".env")
-    if not env_path.exists():
-        env_path.write_text("")
-    lines = env_path.read_text().splitlines(keepends=True)
-    field_map = {
-        "cc_api_key": "CC_ADAPTER_CC_API_KEY",
-        "cc_base_url": "CC_ADAPTER_CC_BASE_URL",
-        "host": "CC_ADAPTER_HOST",
-        "port": "CC_ADAPTER_PORT",
-        "log_level": "CC_ADAPTER_LOG_LEVEL",
-        "log_format": "CC_ADAPTER_LOG_FORMAT",
-        "default_model": "CC_ADAPTER_DEFAULT_MODEL",
-    }
-    update_map = update.model_dump(exclude_none=True)
-    existing_keys = set()
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        if "=" not in stripped or stripped.startswith("#"):
-            continue
-        key = stripped.split("=", 1)[0].strip()
-        for field_name, env_key in field_map.items():
-            if key == env_key and field_name in update_map:
-                value = (
-                    normalize_api_keys(update_map[field_name]) if field_name == "cc_api_key" else update_map[field_name]
-                )
-                if field_name == "cc_api_key":
-                    lines[i] = f"{env_key}={json.dumps(value)}\n"
-                else:
-                    lines[i] = f"{env_key}={value}\n"
-                existing_keys.add(field_name)
-    for field_name, env_key in field_map.items():
-        if field_name in update_map and field_name not in existing_keys:
-            value = normalize_api_keys(update_map[field_name]) if field_name == "cc_api_key" else update_map[field_name]
-            if field_name == "cc_api_key":
-                lines.append(f"{env_key}={json.dumps(value)}\n")
-            else:
-                lines.append(f"{env_key}={update_map[field_name]}\n")
-
-    # Atomic write
-    content = "".join(lines)
-    fd, tmp_path = tempfile.mkstemp(suffix=".env", prefix=".env_", text=True)
-    try:
-        with os.fdopen(fd, "w") as f:
-            f.write(content)
-        os.replace(tmp_path, str(env_path))
-    except Exception:
-        try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass
-        raise
-
-
-def _recreate_client(cfg: AppConfig) -> CommandCodeClient | None:
-    old = get_client()
-    from cc_adapter.core.runtime import create_client
-
-    state_init(
-        cfg,
-        create_client(cfg),
-    )
-    return old
-
-
-async def _apply_config_update(update: ConfigUpdate) -> None:
-    update_dict = update.model_dump(exclude_none=True)
-    cfg = get_config()
-    if cfg is None:
-        return
-    changed_client = _apply_config_fields(cfg, update_dict)
-    if changed_client:
-        old = _recreate_client(cfg)
-        if old is not None:
-            await old.aclose()
-    logger.info("admin.config.updated", fields=list(update_dict.keys()))
