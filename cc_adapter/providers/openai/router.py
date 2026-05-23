@@ -6,15 +6,11 @@ import structlog
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
-from cc_adapter.core.config import get_config_or_default
-from cc_adapter.core.errors import AdapterError, AuthenticationError
-
 from cc_adapter.core.retry import retry_on_empty, stream_with_retry, _BufferDetector
-from cc_adapter.core.runtime import get_config, get_request_translator, get_or_create_client
+from cc_adapter.core.runtime import get_request_translator, get_or_create_client
 from cc_adapter.core.constants import STREAMING_HEADERS
 from cc_adapter.providers.openai.models import ChatCompletionRequest
 from cc_adapter.providers.openai.response import translate_stream, collect_and_translate_nonstream
-
 logger = structlog.get_logger(__name__)
 
 router = APIRouter()
@@ -34,8 +30,6 @@ async def chat_completions(req: ChatCompletionRequest, request: Request):
     )
 
     translator = get_request_translator()
-    if translator is None:
-        raise AuthenticationError("Request translator not initialized")
     cc_body, cc_headers = translator.translate(req)
     cc_body["params"]["stream"] = True
     tools_available = bool(req.tools) and req.tool_choice != "none"

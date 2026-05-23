@@ -11,27 +11,13 @@ def extract_token(request: Request) -> str:
     return request.headers.get("x-api-key", "")
 
 
-def auth_error_response(protocol: str = "openai") -> JSONResponse:
+def auth_error_response(*, message: str = "Invalid API key", protocol: str = "openai") -> JSONResponse:
     if protocol == "anthropic":
-        body = {"error": {"type": "authentication_error", "message": "Invalid API key"}}
+        body = {"error": {"type": "authentication_error", "message": message}}
     else:
         body = {
             "error": {
-                "message": "Invalid API key",
-                "type": "invalid_request_error",
-                "code": "invalid_api_key",
-            }
-        }
-    return JSONResponse(status_code=401, content=body)
-
-
-def missing_key_response(protocol: str = "openai") -> JSONResponse:
-    if protocol == "anthropic":
-        body = {"error": {"type": "authentication_error", "message": "CC_ADAPTER_CC_API_KEY is not configured"}}
-    else:
-        body = {
-            "error": {
-                "message": "CC_ADAPTER_CC_API_KEY is not configured",
+                "message": message,
                 "type": "invalid_request_error",
                 "code": "invalid_api_key",
             }

@@ -62,7 +62,8 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from cc_adapter.core.headers import extract_token, auth_error_response, missing_key_response
+from cc_adapter.core.headers import extract_token, auth_error_response
+from cc_adapter.core.runtime import get_client
 
 AUTH_PROTECTED_PATHS = {"/v1/chat/completions", "/v1/messages", "/v1/responses"}
 
@@ -84,19 +85,27 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         token = extract_token(request)
         if not check_api_access(cfg.access_key, token, cfg.admin_password or ""):
-            protocol = "openai"
-            if request.url.path == "/v1/messages":
-                protocol = "anthropic"
+            protocol = _protocol_from_path(request.url.path)
             logger.warning("auth.failed", reason="invalid_access_key", path=request.url.path)
-            return auth_error_response(protocol)
+            return auth_error_response(protocol=protocol)
 
-        from cc_adapter.core.runtime import get_or_create_client
-
-        client = get_or_create_client()
-        if not client.api_key:
-            protocol = "openai"
-            if request.url.path == "/v1/messages":
-                protocol = "anthropic"
-            return missing_key_response(protocol)
+        client = get_client()
+        if client is not None:
+            if not client.api_key:
+                return auth_error_response(
+                    message="CC_ADAPTER_CC_API_KEY is not configured",
+                    protocol=_protocol_from_path(request.url.path),
+                )
+        elif not cfg.cc_api_key:
+            return auth_error_response(
+                message="CC_ADAPTER_CC_API_KEY is not configured",
+                protocol=_protocol_from_path(request.url.path),
+            )
 
         return await call_next(request)
+
+
+def _protocol_from_path(path: str) -> str:
+    if path == "/v1/messages":
+        return "anthropic"
+    return "openai"

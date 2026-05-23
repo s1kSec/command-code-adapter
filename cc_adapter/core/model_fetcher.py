@@ -145,7 +145,7 @@ class ModelFetcher:
     async def _fetch_and_update(self) -> None:
         self._last_error = None
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(timeout=15.0) as client:
                 resp = await client.get(NPM_URL)
                 resp.raise_for_status()
                 npm_data = resp.json()
@@ -237,7 +237,7 @@ class ModelFetcher:
             with os.fdopen(fd, "w") as f:
                 json.dump(data, f, indent=2)
             os.replace(tmp_path, str(self._cache_path))
-        except BaseException:
+        except Exception:
             try:
                 os.unlink(tmp_path)
             except OSError:

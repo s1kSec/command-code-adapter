@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import structlog
+from datetime import date as date_type, timedelta
+from typing import Any
 
 import httpx
 
@@ -114,10 +116,6 @@ async def query_token_usage(base_url: str, api_key: str, timeout: float = 15.0) 
 async def query_all_tokens(base_url: str, api_keys: list[str]) -> list[dict]:
     tasks = [query_token_usage(base_url, key) for key in api_keys]
     return list(await asyncio.gather(*tasks))
-
-
-from datetime import date as date_type, timedelta
-from typing import Any
 
 
 def _fmt_since(d: date_type) -> str:

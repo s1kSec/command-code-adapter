@@ -58,7 +58,7 @@ Both translate to CC /alpha/generate body, stream SSE back.
 - **Two translator pairs** in `providers/anthropic/` and `providers/openai/` (request→CC, response←CC); shared code in `providers/shared/`, `command_code/`, `core/`.
 - **Singletons** owned by `core/runtime.py`: `_config`, `_cc_client`, translator instances (lazy init via `get_*()`). Also `_version_checker` and `_model_fetcher`.
 - **`get_or_create_client()`** at `runtime.py:41` — auto-creates a client with `AppConfig()` defaults if `init()` hasn't been called, logging a warning. Used by all routers when no client is available.
-- **Auth headers**: `core/headers.py` — `extract_token()` (Bearer/x-api-key), `auth_error_response(protocol)` (401), `missing_key_response(protocol)` (401). Both response helpers branch on `protocol: "openai" | "anthropic"` for correct error shape.
+- **Auth headers**: `core/headers.py` — `extract_token()` (Bearer/x-api-key), `auth_error_response(message, protocol)` (401). Branches on `protocol: "openai" | "anthropic"` for correct error shape; `message` parameter allows custom error text.
 - **Retry**: `core/retry.py` — `retry_on_empty()` for non-streaming (retries once on empty upstream response), `stream_with_retry()` for streaming (same retry logic + optional error event emission).
 - **Admin auth**: HMAC-signed token in `core/auth.py` (not JWT); embeds `exp` + password hash prefix. API access validation at `core/auth.py:check_api_access()`.
 - **ID generation**: `generate_id(prefix, length)` in `core/utils.py`.

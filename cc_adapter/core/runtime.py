@@ -73,7 +73,7 @@ def init(cfg: AppConfig, client: CommandCodeClient) -> None:
     _cc_client = client
 
 
-def get_request_translator() -> RequestTranslator | None:
+def get_request_translator() -> RequestTranslator:
     global _request_translator
     if _request_translator is None:
         from cc_adapter.providers.openai.request import RequestTranslator
@@ -82,7 +82,7 @@ def get_request_translator() -> RequestTranslator | None:
     return _request_translator
 
 
-def get_anthropic_translator() -> AnthropicTranslator | None:
+def get_anthropic_translator() -> AnthropicTranslator:
     global _anthropic_translator
     if _anthropic_translator is None:
         from cc_adapter.providers.anthropic.request import AnthropicTranslator

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import copy
 import datetime
 import os
 from typing import Any
@@ -27,7 +26,11 @@ _STATIC_CONFIG = {
 
 
 def make_config(overrides: dict[str, Any] | None = None) -> dict[str, Any]:
-    base = copy.deepcopy(_STATIC_CONFIG)
+    base = {
+        **_STATIC_CONFIG,
+        "structure": list(_STATIC_CONFIG["structure"]),
+        "recentCommits": list(_STATIC_CONFIG["recentCommits"]),
+    }
     base["date"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
     if overrides:
         base.update(overrides)

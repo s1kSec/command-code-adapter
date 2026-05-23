@@ -102,6 +102,14 @@ async def stream_with_retry(
 
 
 class _BufferDetector:
+    """Buffers SSE chunks to detect empty-response errors before streaming to the client.
+
+    State flow: feed chunks -> should_flush? (seen a visible delta) -> after_flush mode.
+    In before_flush mode, chunks are buffered. Once a visible delta is found, all
+    buffered chunks are drained and subsequent ones pass through immediately.
+    If an empty-error is detected before flushing, the buffer is filtered for retry.
+    """
+
     def __init__(self):
         self._buffer: list[str] = []
         self._flushed = False

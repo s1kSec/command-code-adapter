@@ -95,17 +95,20 @@ async def ui_config():
     }
 
 
+_MODEL_DISPLAY_PREFIXES: dict[str, str] = {
+    "deepseek-v4-": "DeepSeek V4 ",
+    "kimi-k2-": "Kimi K2 ",
+    "glm-": "GLM ",
+    "minimax-m2-": "Minimax M2 ",
+    "qwen-3-6-": "Qwen 3-6 ",
+    "step-3-5-": "Step 3-5 ",
+}
+
+
 def _format_model_display_name(bare_name: str) -> str:
-    for prefix, replacement in [
-        ("deepseek-v4-", "DeepSeek V4 "),
-        ("kimi-k2-", "Kimi K2 "),
-        ("glm-", "GLM "),
-        ("minimax-m2-", "Minimax M2 "),
-        ("qwen-3-6-", "Qwen 3-6 "),
-        ("step-3-5-", "Step 3-5 "),
-    ]:
+    for prefix, replacement in _MODEL_DISPLAY_PREFIXES.items():
         if bare_name.startswith(prefix):
-            suffix = bare_name[len(prefix) :]
+            suffix = bare_name[len(prefix):]
             suffix = " ".join(word.capitalize() for word in suffix.split("-"))
             return replacement + suffix
     return bare_name.replace("-", " ").title()
