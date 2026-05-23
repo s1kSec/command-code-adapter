@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import structlog
 from typing import AsyncGenerator, Awaitable, Callable, TypeVar
+
+import structlog
 
 from cc_adapter.core.errors import AdapterError
 
@@ -31,20 +32,155 @@ async def stream_with_retry(
     logger: structlog.stdlib.BoundLogger,
     label: str = "",
     error_fn: Callable[[str], str] | None = None,
+    buffer_detector: _BufferDetector | None = None,
 ) -> AsyncGenerator[str, None]:
     for attempt in range(2):
         cc_stream = generate_fn()
         translator = translate_fn(cc_stream)
         yielded_any = False
+        should_retry = False
+
         try:
-            async for chunk in translator:
-                yielded_any = True
-                yield chunk
+            if buffer_detector and attempt == 0:
+                async for chunk in translator:
+                    buffer_detector.feed(chunk)
+                    if buffer_detector.after_flush:
+                        data = buffer_detector._chunk_payload(chunk)
+                        if not buffer_detector._visible_seen and buffer_detector._is_empty_error(data):
+                            should_retry = True
+                            await translator.aclose()
+                            break
+                        yield chunk
+                        yielded_any = True
+                        continue
+
+                    if buffer_detector.should_flush():
+                        for c in buffer_detector.drain():
+                            yield c
+                            yielded_any = True
+                        yielded_any = True
+                        buffer_detector.after_flush = True
+                        continue
+
+                    data = buffer_detector._chunk_payload(chunk)
+                    if buffer_detector._is_empty_error(data):
+                        for c in buffer_detector.retry_chunks():
+                            yield c
+                            yielded_any = True
+                        should_retry = True
+                        await translator.aclose()
+                        break
+                else:
+                    if buffer_detector.should_retry():
+                        should_retry = True
+                        for c in buffer_detector.retry_chunks():
+                            yield c
+                            yielded_any = True
+                    else:
+                        for c in buffer_detector.drain():
+                            yield c
+                            yielded_any = True
+                    await translator.aclose()
+            else:
+                async for chunk in translator:
+                    yielded_any = True
+                    yield chunk
         except AdapterError as e:
             if not yielded_any and attempt == 0 and "empty response" in e.message.lower():
-                logger.warning("%s: Empty upstream response (attempt 1/2), retrying...", label)
-                continue
-            if error_fn:
+                should_retry = True
+            elif error_fn:
                 yield error_fn(e.message)
-            return
+                return
+            else:
+                return
+
+        if should_retry:
+            logger.warning("%s: Empty upstream response (attempt %d/2), retrying...", label, attempt + 1)
+            continue
+
         return
+
+
+class _BufferDetector:
+    def __init__(self):
+        self._buffer: list[str] = []
+        self._flushed = False
+        self._visible_seen = False
+        self.after_flush = False
+
+    def feed(self, chunk: str) -> None:
+        if self._flushed:
+            return
+        self._buffer.append(chunk)
+
+    def _chunk_payload(self, chunk: str) -> dict | None:
+        import json
+
+        try:
+            payload = chunk.removeprefix("data: ").strip()
+            if payload == "[DONE]":
+                return None
+            data = json.loads(payload)
+            return data if isinstance(data, dict) else None
+        except Exception:
+            return None
+
+    def _has_streamable_delta(self, data: dict | None) -> bool:
+        if not data:
+            return False
+        for choice in data.get("choices", []):
+            delta = choice.get("delta") or {}
+            if delta.get("content") or delta.get("tool_calls") or delta.get("reasoning_content"):
+                return True
+        return False
+
+    def _has_visible_delta(self, data: dict | None) -> bool:
+        if not data:
+            return False
+        for choice in data.get("choices", []):
+            delta = choice.get("delta") or {}
+            if delta.get("content") or delta.get("tool_calls"):
+                return True
+        return False
+
+    def _is_empty_error(self, data: dict | None) -> bool:
+        return bool(data and data.get("error", {}).get("message") == "Upstream model returned an empty response")
+
+    def should_flush(self) -> bool:
+        if self._flushed or not self._buffer:
+            return False
+        last = self._chunk_payload(self._buffer[-1])
+        if last is None:
+            return False
+        if self._has_streamable_delta(last):
+            if self._has_visible_delta(last):
+                self._visible_seen = True
+            self._flushed = True
+            return True
+        return False
+
+    def should_retry(self) -> bool:
+        if not self._buffer:
+            return False
+        for chunk in self._buffer:
+            data = self._chunk_payload(chunk)
+            if self._is_empty_error(data):
+                return True
+        return False
+
+    def drain(self) -> list[str]:
+        result = list(self._buffer)
+        self._buffer.clear()
+        return result
+
+    def retry_chunks(self) -> list[str]:
+        result = []
+        for chunk in self._buffer:
+            if chunk.startswith("data: [DONE]"):
+                continue
+            data = self._chunk_payload(chunk)
+            if self._is_empty_error(data):
+                continue
+            result.append(chunk)
+        self._buffer.clear()
+        return result

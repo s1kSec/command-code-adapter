@@ -3,8 +3,9 @@ import json
 import time
 
 import pytest
+import structlog
 from cc_adapter.core.errors import AdapterError
-from cc_adapter.providers.openai.router import _stream_with_retry
+from cc_adapter.core.retry import stream_with_retry, _BufferDetector
 from cc_adapter.providers.openai.response import collect_and_translate_nonstream, translate_stream
 
 
@@ -364,7 +365,14 @@ async def test_stream_with_retry_retries_reasoning_only_tool_turn():
         return fake_stream()
 
     chunks = []
-    async for chunk in _stream_with_retry(generate, "deepseek-v4", time.time(), tools_available=True):
+    detector = _BufferDetector()
+    async for chunk in stream_with_retry(
+        generate,
+        lambda stream: translate_stream(stream, "deepseek-v4", time.time(), tools_available=True),
+        structlog.get_logger(),
+        "test",
+        buffer_detector=detector,
+    ):
         chunks.append(chunk)
 
     assert attempts == 2
@@ -388,7 +396,13 @@ async def test_stream_with_retry_streams_reasoning_before_content_with_tools():
 
         return fake_stream()
 
-    stream = _stream_with_retry(generate, "deepseek-v4", time.time(), tools_available=True)
+    stream = stream_with_retry(
+        generate,
+        lambda s: translate_stream(s, "deepseek-v4", time.time(), tools_available=True),
+        structlog.get_logger(),
+        "test",
+        buffer_detector=_BufferDetector(),
+    )
     try:
         first_chunk = await asyncio.wait_for(anext(stream), timeout=0.05)
     except TimeoutError:
@@ -434,7 +448,14 @@ async def test_stream_with_retry_does_not_retry_after_visible_output():
         return fake_stream()
 
     chunks = []
-    async for chunk in _stream_with_retry(generate, "deepseek-v4", time.time(), tools_available=True):
+    detector = _BufferDetector()
+    async for chunk in stream_with_retry(
+        generate,
+        lambda stream: translate_stream(stream, "deepseek-v4", time.time(), tools_available=True),
+        structlog.get_logger(),
+        "test",
+        buffer_detector=detector,
+    ):
         chunks.append(chunk)
 
     assert attempts == 1
