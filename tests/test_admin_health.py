@@ -74,9 +74,8 @@ async def test_raw_config_put_returns_405(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_reasoning_effort_config():
-    token = generate_token()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        resp = await client.get("/admin/api/reasoning-effort", headers={"Authorization": f"Bearer {token}"})
+        resp = await client.get("/admin/api/reasoning-effort")
     assert resp.status_code == 200
     data = resp.json()
     assert "model_reasoning_efforts" in data
