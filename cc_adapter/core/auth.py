@@ -56,3 +56,47 @@ def validate_token(token: str) -> bool:
         return True
     except (ValueError, KeyError, IndexError, TypeError, json.JSONDecodeError):
         return False
+
+
+from fastapi import Request
+from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+
+from cc_adapter.core.headers import extract_token, auth_error_response, missing_key_response
+
+AUTH_PROTECTED_PATHS = {"/v1/chat/completions", "/v1/messages", "/v1/responses"}
+
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        if request.url.path not in AUTH_PROTECTED_PATHS:
+            return await call_next(request)
+
+        import structlog
+
+        logger = structlog.get_logger(__name__)
+
+        from cc_adapter.core.config import get_config_or_default
+
+        cfg = get_config_or_default()
+        if not cfg.access_key:
+            return await call_next(request)
+
+        token = extract_token(request)
+        if not check_api_access(cfg.access_key, token, cfg.admin_password or ""):
+            protocol = "openai"
+            if request.url.path == "/v1/messages":
+                protocol = "anthropic"
+            logger.warning("auth.failed", reason="invalid_access_key", path=request.url.path)
+            return auth_error_response(protocol)
+
+        from cc_adapter.core.runtime import get_or_create_client
+
+        client = get_or_create_client()
+        if not client.api_key:
+            protocol = "openai"
+            if request.url.path == "/v1/messages":
+                protocol = "anthropic"
+            return missing_key_response(protocol)
+
+        return await call_next(request)

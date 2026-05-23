@@ -4,10 +4,7 @@ import structlog
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from cc_adapter.core.config import get_config_or_default
 from cc_adapter.core.errors import AdapterError
-from cc_adapter.core.auth import check_api_access
-from cc_adapter.core.headers import extract_token, auth_error_response, missing_key_response
 from cc_adapter.core.retry import retry_on_empty, stream_with_retry
 from cc_adapter.core.runtime import get_config, get_or_create_client
 from cc_adapter.core.constants import STREAMING_HEADERS
@@ -32,11 +29,6 @@ def _get_responses_translator():
 @router.post("/v1/responses")
 async def create_response(req: ResponseCreateRequest, request: Request):
     structlog.contextvars.bind_contextvars(protocol="responses")
-    cfg = get_config_or_default()
-
-    token = extract_token(request)
-    if cfg.access_key and not check_api_access(cfg.access_key, token, cfg.admin_password or ""):
-        return auth_error_response("openai")
 
     logger.info(
         "responses.request",
@@ -52,8 +44,6 @@ async def create_response(req: ResponseCreateRequest, request: Request):
         cc_body["params"]["stream"] = True
 
         current_client = get_or_create_client()
-        if not current_client.api_key:
-            return missing_key_response("openai")
 
         if req.stream:
             return StreamingResponse(

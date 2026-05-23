@@ -9,8 +9,7 @@ from fastapi.responses import StreamingResponse
 
 from cc_adapter.core.config import get_config_or_default
 from cc_adapter.core.errors import AdapterError, AuthenticationError
-from cc_adapter.core.auth import check_api_access
-from cc_adapter.core.headers import extract_token, auth_error_response, missing_key_response
+
 from cc_adapter.core.retry import retry_on_empty
 from cc_adapter.core.runtime import get_config, get_request_translator, get_or_create_client
 from cc_adapter.core.constants import STREAMING_HEADERS
@@ -128,12 +127,6 @@ async def _stream_with_retry(
 @router.post("/v1/chat/completions")
 async def chat_completions(req: ChatCompletionRequest, request: Request):
     structlog.contextvars.bind_contextvars(protocol="openai")
-    cfg = get_config_or_default()
-    if cfg.access_key:
-        token = extract_token(request)
-        if not check_api_access(cfg.access_key, token, cfg.admin_password or ""):
-            logger.warning("auth.failed", reason="invalid_access_key")
-            return auth_error_response("openai")
 
     logger.info(
         "openai.request",
@@ -154,8 +147,6 @@ async def chat_completions(req: ChatCompletionRequest, request: Request):
     start_time = time.time()
 
     current_client = get_or_create_client()
-    if not current_client.api_key:
-        return missing_key_response("openai")
 
     if req.stream:
         return StreamingResponse(

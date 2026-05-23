@@ -13,7 +13,7 @@ from cc_adapter.core.constants import VERSION
 
 from cc_adapter.core.logging import configure_logging, CorrelationIDMiddleware
 from cc_adapter.core.errors import AdapterError
-from cc_adapter.core.auth import set_password
+from cc_adapter.core.auth import set_password, AuthMiddleware
 from cc_adapter.core.runtime import (
     init as runtime_init,
     get_client as get_runtime_client,
@@ -53,6 +53,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Command Code Adapter", version=VERSION, lifespan=lifespan)
 app.add_middleware(CorrelationIDMiddleware)
+app.add_middleware(AuthMiddleware)
 
 cfg = AppConfig()
 runtime_init(cfg, create_client(cfg))
