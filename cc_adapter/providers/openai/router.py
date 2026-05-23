@@ -11,6 +11,7 @@ from cc_adapter.core.runtime import get_request_translator, get_or_create_client
 from cc_adapter.core.constants import STREAMING_HEADERS
 from cc_adapter.providers.openai.models import ChatCompletionRequest
 from cc_adapter.providers.openai.response import translate_stream, collect_and_translate_nonstream
+
 logger = structlog.get_logger(__name__)
 
 router = APIRouter()

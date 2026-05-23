@@ -17,7 +17,7 @@ def sse_stream():
 
             async def aiter_lines(self):
                 yield '{"type":"text-delta","text":"hi"}'
-                yield 'data: [DONE]'
+                yield "data: [DONE]"
 
             async def aread(self):
                 return b""
