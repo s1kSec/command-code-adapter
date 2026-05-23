@@ -56,6 +56,7 @@ class CommandCodeClient:
         max_connections: int = 200,
         max_keepalive_connections: int = 50,
         http2: bool = False,
+        api_keys: list[str] | None = None,
     ):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
@@ -65,6 +66,13 @@ class CommandCodeClient:
         self._max_connections = max_connections
         self._max_keepalive_connections = max_keepalive_connections
         self._http2 = _make_http2_safe(http2)
+
+        if api_keys and len(api_keys) > 1:
+            from cc_adapter.core.key_pool import KeyPool
+
+            self.key_pool: KeyPool | None = KeyPool(api_keys, self.base_url)
+        else:
+            self.key_pool = None
 
     def _client(self) -> httpx.AsyncClient:
         if self._http_client is None or self._http_client.is_closed:
@@ -86,31 +94,59 @@ class CommandCodeClient:
     async def generate(
         self, body: dict[str, Any], extra_headers: dict[str, str] | None = None
     ) -> AsyncGenerator[dict[str, Any], None]:
-        if not self.api_key:
-            raise AuthenticationError("CC_ADAPTER_CC_API_KEY is not configured")
+        if self.key_pool is not None:
+            self.key_pool.clear_unavailable()
 
-        headers = make_cc_headers(self.api_key)
-        headers.update(extra_headers or {})
+        tried_keys: set[str] = set()
+        last_error: Exception | None = None
 
-        url = f"{self.base_url}/alpha/generate"
+        while True:
+            if self.key_pool is not None:
+                key = await self.key_pool.select_key()
+            else:
+                key = self.api_key
 
-        client = self._client()
-        try:
-            async with client.stream("POST", url, json=body, headers=headers) as response:
-                if response.is_error:
-                    error_body = await response.aread()
-                    text = error_body.decode() if error_body else response.reason_phrase or "Unknown error"
-                    logger.warning("upstream.error", status_code=response.status_code, error_type="cc_api_error")
-                    raise map_upstream_error(response.status_code, text)
+            if not key:
+                raise AuthenticationError("CC_ADAPTER_CC_API_KEY is not configured")
 
-                async for line in response.aiter_lines():
-                    parsed = _parse_sse_line(line)
-                    if parsed is not None:
-                        yield parsed
+            if key in tried_keys:
+                if last_error is not None:
+                    raise last_error
+                raise AuthenticationError("CC_ADAPTER_CC_API_KEY is not configured")
 
-        except httpx.TimeoutException:
-            logger.warning("upstream.error", error_type="timeout", url=url)
-            raise TimeoutError_("Command Code API request timed out")
-        except httpx.RequestError as e:
-            logger.warning("upstream.error", error_type=e.__class__.__name__, url=url)
-            raise UpstreamError(f"Command Code API request failed: {e.__class__.__name__}")
+            tried_keys.add(key)
+
+            headers = make_cc_headers(key)
+            headers.update(extra_headers or {})
+
+            url = f"{self.base_url}/alpha/generate"
+
+            client = self._client()
+            try:
+                async with client.stream("POST", url, json=body, headers=headers) as response:
+                    if response.is_error:
+                        error_body = await response.aread()
+                        text = error_body.decode() if error_body else response.reason_phrase or "Unknown error"
+                        logger.warning("upstream.error", status_code=response.status_code, error_type="cc_api_error")
+                        mapped = map_upstream_error(response.status_code, text)
+
+                        if response.status_code in (402, 429):
+                            if self.key_pool is not None:
+                                self.key_pool.mark_unavailable(key)
+                            last_error = mapped
+                            continue
+
+                        raise mapped
+
+                    async for line in response.aiter_lines():
+                        parsed = _parse_sse_line(line)
+                        if parsed is not None:
+                            yield parsed
+                    return
+
+            except httpx.TimeoutException:
+                logger.warning("upstream.error", error_type="timeout", url=url)
+                raise TimeoutError_("Command Code API request timed out")
+            except httpx.RequestError as e:
+                logger.warning("upstream.error", error_type=e.__class__.__name__, url=url)
+                raise UpstreamError(f"Command Code API request failed: {e.__class__.__name__}")
