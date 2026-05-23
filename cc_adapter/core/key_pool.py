@@ -31,6 +31,9 @@ class KeyPool:
             credits = self._credits.get(key)
             if credits is None or credits > 0:
                 return key
+        for key in self._keys:
+            if key not in self._unavailable:
+                return key
         return self._keys[0] if self._keys else None
 
     def mark_unavailable(self, key: str) -> None:
@@ -64,11 +67,15 @@ class KeyPool:
         try:
             tasks = [self._fetch_credits(key) for key in self._keys]
             results = await asyncio.gather(*tasks, return_exceptions=True)
+            success_count = 0
             for key, result in zip(self._keys, results):
                 if isinstance(result, Exception):
-                    logger.warning("credits_fetch_failed", key=key[:8] + "...", error=str(result))
+                    logger.warning("credits_fetch_failed", key=key[-4:], error=str(result))
                 elif isinstance(result, int):
                     self._credits[key] = result
+                    success_count += 1
+            if success_count == 0 and self._keys:
+                self._last_error = "All credit fetches failed"
             self._last_fetch = time.monotonic()
         except Exception as e:
             self._last_error = str(e)
