@@ -7,7 +7,7 @@ from typing import Any
 _buffer: collections.deque[dict[str, Any]] = collections.deque(maxlen=1000)
 _lock = threading.Lock()
 
-_LEVEL_ORDER: dict[str, int] = {"DEBUG": 10, "INFO": 20, "WARNING": 30, "ERROR": 40}
+_LEVEL_ORDER: dict[str, int] = {"DEBUG": 10, "INFO": 20, "WARNING": 30, "WARN": 30, "ERROR": 40, "CRITICAL": 50}
 
 
 def append(entry: dict[str, Any]) -> None:
@@ -16,6 +16,8 @@ def append(entry: dict[str, Any]) -> None:
 
 
 def get_entries(*, level: str = "INFO", search: str = "", limit: int = 200) -> list[dict[str, Any]]:
+    if limit <= 0:
+        return []
     min_level = _LEVEL_ORDER.get(level.upper(), 20)
     search_lower = search.lower() if search else ""
     results: list[dict[str, Any]] = []
