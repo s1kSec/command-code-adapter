@@ -131,7 +131,7 @@ async def list_models():
 
 
 @router.get("/reasoning-effort")
-async def get_reasoning_effort_config(_=Depends(verify_auth)):
+async def get_reasoning_effort_config():
     return {
         "model_reasoning_efforts": get_reasoning_efforts(),
         "description": (
