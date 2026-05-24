@@ -4,7 +4,7 @@ import copy
 import json
 import structlog
 import time
-from typing import AsyncGenerator
+from typing import AsyncGenerator, AsyncIterable
 
 from cc_adapter.providers.anthropic.models import AnthropicResponse, AnthropicUsage
 from cc_adapter.core.errors import AdapterError, map_upstream_error
@@ -26,17 +26,11 @@ def _map_stop_reason(cc_reason: str | None) -> str | None:
 
 
 def _has_web_search(events: list[dict]) -> bool:
-    return any(
-        e.get("type") == "tool-call" and e.get("toolName") == "web_search"
-        for e in events
-    )
+    return any(e.get("type") == "tool-call" and e.get("toolName") == "web_search" for e in events)
 
 
 def _extract_web_search_calls(events: list[dict]) -> list[dict]:
-    return [
-        e for e in events
-        if e.get("type") == "tool-call" and e.get("toolName") == "web_search"
-    ]
+    return [e for e in events if e.get("type") == "tool-call" and e.get("toolName") == "web_search"]
 
 
 def _build_second_cc_body(original_body: dict, web_search_calls: list[dict], search_results: list[str]) -> dict:
@@ -54,28 +48,37 @@ def _build_second_cc_body(original_body: dict, web_search_calls: list[dict], sea
     ]
     messages.append({"role": "assistant", "content": assistant_blocks})
 
+    if len(web_search_calls) != len(search_results):
+        raise ValueError(
+            f"web_search_calls length ({len(web_search_calls)}) does not match search_results length ({len(search_results)})"
+        )
+
     for tc, formatted_result in zip(web_search_calls, search_results):
-        messages.append({
-            "role": "tool",
-            "content": [{
-                "type": "tool-result",
-                "toolCallId": tc.get("toolCallId", ""),
-                "toolName": "web_search",
-                "output": {"type": "text", "value": formatted_result},
-            }],
-        })
+        messages.append(
+            {
+                "role": "tool",
+                "content": [
+                    {
+                        "type": "tool-result",
+                        "toolCallId": tc.get("toolCallId", ""),
+                        "toolName": "web_search",
+                        "output": {"type": "text", "value": formatted_result},
+                    }
+                ],
+            }
+        )
 
     return body
 
 
-async def _events_to_list(stream) -> list[dict]:
+async def _events_to_list(stream: AsyncIterable[dict]) -> list[dict]:
     events = []
     async for event in stream:
         events.append(event)
     return events
 
 
-async def _list_to_stream(items) -> AsyncGenerator[dict, None]:
+async def _list_to_stream(items: list[dict]) -> AsyncGenerator[dict, None]:
     for item in items:
         yield item
 
