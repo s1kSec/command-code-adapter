@@ -342,15 +342,14 @@ def test_web_search_tool_injected_when_configured(translator, monkeypatch):
     )
     body, _ = translator.translate(req)
     tool_names = [t["name"] for t in body["params"]["tools"]]
-    assert "web_search" in tool_names
-    assert "read" in tool_names
+    assert tool_names == ["read", "web_search"]
 
 
 def test_web_search_tool_not_injected_when_disabled(translator, monkeypatch):
     from cc_adapter.core.config import AppConfig
     from cc_adapter.core import runtime
 
-    cfg = AppConfig()
+    cfg = AppConfig(web_search_provider="", deepseek_api_key="", brave_api_key="", tavily_api_key="")
     monkeypatch.setattr(runtime, "_config", cfg)
 
     req = AnthropicRequest(
