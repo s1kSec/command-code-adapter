@@ -47,7 +47,11 @@ def test_system_prompt_list(translator):
     assert body["params"]["system"] == "You are helpful."
 
 
-def test_tool_definition(translator):
+def test_tool_definition(translator, monkeypatch):
+    from cc_adapter.core.config import AppConfig
+    from cc_adapter.core import runtime
+
+    monkeypatch.setattr(runtime, "_config", AppConfig(web_search_provider=""))
     req = AnthropicRequest(
         model="claude-sonnet-4-6",
         messages=[AnthropicMessage(role="user", content="read a file")],

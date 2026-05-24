@@ -518,6 +518,7 @@ async def test_nonstream_access_key_auth(client):
 @pytest.mark.asyncio
 async def test_stream_empty_then_retry_succeeds(client):
     _setup(
+        cfg_overrides={"web_search_provider": ""},
         events=[
             {"type": "finish", "finishReason": "end_turn", "totalUsage": {"inputTokens": 0, "outputTokens": 0}},
         ],
@@ -569,6 +570,7 @@ async def test_stream_empty_both_attempts_returns_error(client):
 async def test_stream_empty_text_delta_skipped_retry_succeeds(client):
     """text-delta with empty text must not emit chunks, so retry works."""
     _setup(
+        cfg_overrides={"web_search_provider": ""},
         events=[
             {"type": "text-delta", "text": ""},
             {"type": "finish", "finishReason": "end_turn", "totalUsage": {"inputTokens": 0, "outputTokens": 0}},

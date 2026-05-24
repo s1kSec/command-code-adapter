@@ -60,8 +60,11 @@ async def _stream_with_web_search(
         return
 
     if not _has_web_search(events, injected=injected):
-        async for chunk in translate_anthropic_stream(_list_to_stream(events), model):
-            yield chunk
+        try:
+            async for chunk in translate_anthropic_stream(_list_to_stream(events), model):
+                yield chunk
+        except AdapterError as e:
+            yield _anthropic_sse_error(e.message)
         return
 
     web_search_calls = _extract_web_search_calls(events)
@@ -109,7 +112,6 @@ async def _nonstream_with_web_search(
 
     events = await _events_to_list(client.generate(cc_body, cc_headers))
 
-    injected = cc_body.get("params", {}).get("_adapter_web_search", False)
     if not _has_web_search(events, injected=injected):
 
         async def _s():
