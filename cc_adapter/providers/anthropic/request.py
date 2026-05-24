@@ -70,6 +70,14 @@ class AnthropicTranslator:
                 for t in req.tools
             ]
 
+        from cc_adapter.providers.shared.web_search import is_web_search_enabled, inject_web_search_tool
+        from cc_adapter.core.runtime import get_config
+
+        config = get_config()
+        if is_web_search_enabled(config):
+            params.setdefault("tools", [])
+            params["tools"] = inject_web_search_tool(params["tools"])
+
         if req.tool_choice:
             tc = req.tool_choice
             choice: dict[str, Any] = {"type": tc.type}
