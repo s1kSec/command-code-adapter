@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import copy
+from typing import Any
 
 WEB_SEARCH_TOOL_DEFINITION = {
     "name": "web_search",
@@ -14,10 +16,10 @@ WEB_SEARCH_TOOL_DEFINITION = {
 }
 
 
-def is_web_search_enabled(config) -> bool:
+def is_web_search_enabled(config: Any) -> bool:
     if not config or not config.web_search_provider:
         return False
-    provider = config.web_search_provider
+    provider = config.web_search_provider.strip().lower()
     if provider == "deepseek":
         return bool(config.deepseek_api_key)
     if provider == "brave":
@@ -30,4 +32,4 @@ def is_web_search_enabled(config) -> bool:
 def inject_web_search_tool(tools: list[dict]) -> list[dict]:
     if any(t.get("name") == "web_search" for t in tools):
         return tools
-    return tools + [WEB_SEARCH_TOOL_DEFINITION]
+    return tools + [copy.deepcopy(WEB_SEARCH_TOOL_DEFINITION)]
