@@ -25,6 +25,8 @@ class AppConfig(BaseSettings):
     http_max_keepalive_connections: int = 50
     http2: bool = False
 
+    zdr: bool = True
+
     web_search_provider: str = ""
     deepseek_api_key: str = ""
     brave_api_key: str = ""
