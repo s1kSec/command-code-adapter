@@ -47,11 +47,7 @@ def test_system_prompt_list(translator):
     assert body["params"]["system"] == "You are helpful."
 
 
-def test_tool_definition(translator, monkeypatch):
-    from cc_adapter.core.config import AppConfig
-    from cc_adapter.core import runtime
-
-    monkeypatch.setattr(runtime, "_config", AppConfig(web_search_provider=""))
+def test_tool_definition(translator):
     req = AnthropicRequest(
         model="claude-sonnet-4-6",
         messages=[AnthropicMessage(role="user", content="read a file")],
@@ -320,84 +316,6 @@ def test_image_content_block_skipped(translator, caplog):
     body, _ = translator.translate(req)
     assert "Image" in caplog.text
     assert body["params"]["messages"][0]["content"] == [{"type": "text", "text": "what is this?"}]
-
-
-def test_web_search_tool_injected_when_configured(translator, monkeypatch):
-    from cc_adapter.core.config import AppConfig
-    from cc_adapter.core import runtime
-
-    cfg = AppConfig(web_search_provider="deepseek", deepseek_api_key="sk-test")
-    monkeypatch.setattr(runtime, "_config", cfg)
-
-    req = AnthropicRequest(
-        model="claude-sonnet-4-6",
-        messages=[AnthropicMessage(role="user", content="search for something")],
-        tools=[
-            {
-                "name": "read",
-                "description": "Read a file",
-                "input_schema": {
-                    "type": "object",
-                    "properties": {"path": {"type": "string"}},
-                    "required": ["path"],
-                },
-            }
-        ],
-    )
-    body, _ = translator.translate(req)
-    tool_names = [t["name"] for t in body["params"]["tools"]]
-    assert tool_names == ["read", "web_search"]
-
-
-def test_web_search_tool_not_injected_when_disabled(translator, monkeypatch):
-    from cc_adapter.core.config import AppConfig
-    from cc_adapter.core import runtime
-
-    cfg = AppConfig(web_search_provider="", deepseek_api_key="", brave_api_key="", tavily_api_key="")
-    monkeypatch.setattr(runtime, "_config", cfg)
-
-    req = AnthropicRequest(
-        model="claude-sonnet-4-6",
-        messages=[AnthropicMessage(role="user", content="search for something")],
-        tools=[
-            {
-                "name": "read",
-                "description": "Read a file",
-                "input_schema": {
-                    "type": "object",
-                    "properties": {"path": {"type": "string"}},
-                    "required": ["path"],
-                },
-            }
-        ],
-    )
-    body, _ = translator.translate(req)
-    tool_names = [t["name"] for t in body["params"]["tools"]]
-    assert "web_search" not in tool_names
-
-
-def test_web_search_tool_not_duplicated(translator, monkeypatch):
-    from cc_adapter.core.config import AppConfig
-    from cc_adapter.core import runtime
-
-    cfg = AppConfig(web_search_provider="deepseek", deepseek_api_key="sk-test")
-    monkeypatch.setattr(runtime, "_config", cfg)
-
-    req = AnthropicRequest(
-        model="claude-sonnet-4-6",
-        messages=[AnthropicMessage(role="user", content="search")],
-        tools=[
-            {
-                "name": "web_search",
-                "description": "custom web search",
-                "input_schema": {"type": "object", "properties": {"query": {"type": "string"}}},
-            }
-        ],
-    )
-    body, _ = translator.translate(req)
-    assert len(body["params"]["tools"]) == 1
-    assert body["params"]["tools"][0]["name"] == "web_search"
-    assert body["params"]["tools"][0]["description"] == "custom web search"
 
 
 @pytest.mark.asyncio
