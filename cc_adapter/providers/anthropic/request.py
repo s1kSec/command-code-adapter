@@ -8,6 +8,7 @@ from cc_adapter.command_code.headers import make_cc_headers
 from cc_adapter.providers.shared.model_mapping import resolve_model_id, clamp_reasoning_effort
 from cc_adapter.providers.shared.tool_mapping import make_tool_call_block, make_tool_result_block, normalize_schema
 from cc_adapter.command_code.body import make_config, make_cc_body
+from cc_adapter.core.errors import AdapterError
 
 logger = structlog.get_logger(__name__)
 
@@ -65,7 +66,7 @@ class AnthropicTranslator:
                 {
                     "name": t.name,
                     "description": t.description,
-                    "input_schema": normalize_schema(t.input_schema),
+                    "input_schema": normalize_schema(self._require_tool_schema(t)),
                 }
                 for t in req.tools
             ]
@@ -87,6 +88,19 @@ class AnthropicTranslator:
             params["temperature"] = req.temperature
 
         return make_cc_body(config=make_config(), params=params)
+
+    def _require_tool_schema(self, tool: Any) -> dict[str, Any]:
+        if tool.input_schema is not None:
+            return tool.input_schema
+        if tool.type:
+            raise AdapterError(
+                message=(
+                    f"Anthropic server tool '{tool.name}' cannot be translated to Command Code; "
+                    "enable DeepSeek web_search forwarding for server-side tools"
+                ),
+                status_code=400,
+            )
+        raise AdapterError(message=f"Anthropic tool '{tool.name}' must include input_schema", status_code=400)
 
     def _build_messages(self, messages: list[Any]) -> list[dict[str, Any]]:
         tool_names: dict[str, str] = {}

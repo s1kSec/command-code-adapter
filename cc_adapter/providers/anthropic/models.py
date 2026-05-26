@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class AnthropicMessage(BaseModel):
@@ -11,14 +11,19 @@ class AnthropicMessage(BaseModel):
 
 
 class AnthropicToolChoice(BaseModel):
-    type: Literal["auto", "any", "tool"] = "auto"
+    model_config = ConfigDict(extra="allow")
+
+    type: Literal["auto", "any", "tool", "none"] = "auto"
     name: str | None = None
 
 
 class AnthropicToolParam(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     name: str
+    type: str | None = None
     description: str | None = None
-    input_schema: dict[str, Any]
+    input_schema: dict[str, Any] | None = None
 
 
 class AnthropicThinkingConfig(BaseModel):
@@ -27,6 +32,8 @@ class AnthropicThinkingConfig(BaseModel):
 
 
 class AnthropicRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     model: str
     max_tokens: int = 4096
     messages: list[AnthropicMessage]

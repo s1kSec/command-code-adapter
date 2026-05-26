@@ -1,3 +1,5 @@
+import json
+
 import pytest
 import respx
 from httpx import ASGITransport, AsyncClient, Response as HttpxResponse
@@ -58,6 +60,105 @@ async def test_stream_forwards_to_deepseek():
     assert resp.status_code == 200
     assert "Hello from DeepSeek" in resp.text
     assert deepseek_route.called
+
+
+@pytest.mark.asyncio
+async def test_stream_forward_does_not_write_passthrough_log_file(tmp_path, monkeypatch):
+    cfg = AppConfig(cc_api_key="test-key", web_search_provider="deepseek", deepseek_api_key="sk-test")
+    runtime._config = cfg
+    runtime._cc_client = None
+    monkeypatch.chdir(tmp_path)
+
+    async with respx.mock(assert_all_called=False) as respx_mock:
+        deepseek_route = respx_mock.post("https://api.deepseek.com/anthropic/v1/messages").mock(
+            return_value=HttpxResponse(200, content=DEEPSEEK_SSE_RESPONSE)
+        )
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/v1/messages",
+                json={
+                    "model": "deepseek-v4-flash",
+                    "max_tokens": 100,
+                    "messages": [{"role": "user", "content": "hello"}],
+                    "stream": True,
+                },
+            )
+
+    assert resp.status_code == 200
+    assert deepseek_route.called
+    assert not (tmp_path / "logs").exists()
+
+
+@pytest.mark.asyncio
+async def test_stream_forwards_server_web_search_tool_shape_to_deepseek():
+    cfg = AppConfig(cc_api_key="test-key", web_search_provider="deepseek", deepseek_api_key="sk-test")
+    runtime._config = cfg
+    runtime._cc_client = None
+
+    async with respx.mock(assert_all_called=False) as respx_mock:
+        deepseek_route = respx_mock.post("https://api.deepseek.com/anthropic/v1/messages").mock(
+            return_value=HttpxResponse(200, content=DEEPSEEK_SSE_RESPONSE)
+        )
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/v1/messages",
+                json={
+                    "model": "deepseek-v4-flash",
+                    "max_tokens": 100,
+                    "messages": [{"role": "user", "content": "search the web for current news"}],
+                    "stream": True,
+                    "tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": 5}],
+                    "tool_choice": {"type": "auto"},
+                    "top_p": 0.8,
+                    "stop_sequences": ["STOP"],
+                },
+            )
+
+    assert resp.status_code == 200
+    assert deepseek_route.called
+    forwarded_body = json.loads(deepseek_route.calls.last.request.content)
+    assert forwarded_body["tools"] == [{"type": "web_search_20250305", "name": "web_search", "max_uses": 5}]
+    assert forwarded_body["tool_choice"] == {"type": "auto"}
+    assert forwarded_body["top_p"] == 0.8
+    assert forwarded_body["stop_sequences"] == ["STOP"]
+
+
+@pytest.mark.asyncio
+async def test_stream_uses_configured_web_search_model_for_deepseek():
+    cfg = AppConfig(
+        cc_api_key="test-key",
+        web_search_provider="deepseek",
+        deepseek_api_key="sk-test",
+        web_search_model="deepseek-v4-pro",
+    )
+    runtime._config = cfg
+    runtime._cc_client = None
+
+    async with respx.mock(assert_all_called=False) as respx_mock:
+        deepseek_route = respx_mock.post("https://api.deepseek.com/anthropic/v1/messages").mock(
+            return_value=HttpxResponse(200, content=DEEPSEEK_SSE_RESPONSE)
+        )
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/v1/messages",
+                json={
+                    "model": "deepseek-v4-flash",
+                    "max_tokens": 100,
+                    "messages": [{"role": "user", "content": "search the web"}],
+                    "stream": True,
+                },
+            )
+
+    assert resp.status_code == 200
+    assert deepseek_route.called
+    forwarded_body = json.loads(deepseek_route.calls.last.request.content)
+    assert forwarded_body["model"] == "deepseek-v4-pro"
 
 
 @pytest.mark.asyncio
@@ -133,6 +234,34 @@ async def test_disabled_still_goes_to_cc():
 
     assert resp.status_code == 200
     assert cc_route.called
+
+
+@pytest.mark.asyncio
+async def test_server_tool_without_deepseek_forwarding_returns_400():
+    cfg = AppConfig(cc_api_key="test-key", web_search_provider="", deepseek_api_key="")
+    runtime._config = cfg
+    runtime._cc_client = None
+
+    async with respx.mock(assert_all_called=False) as respx_mock:
+        cc_route = respx_mock.post("https://api.commandcode.ai/alpha/generate").mock(
+            return_value=HttpxResponse(200, text='data: {"type":"text-delta","text":"unexpected"}\n\n')
+        )
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/v1/messages",
+                json={
+                    "model": "claude-sonnet-4-6",
+                    "max_tokens": 100,
+                    "messages": [{"role": "user", "content": "search"}],
+                    "stream": False,
+                    "tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": 1}],
+                },
+            )
+
+    assert resp.status_code == 400
+    assert "server tool" in resp.json()["error"]["message"]
+    assert not cc_route.called
 
 
 @pytest.mark.asyncio

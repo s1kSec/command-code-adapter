@@ -50,6 +50,10 @@ docker compose up -d
 | `CC_ADAPTER_ADMIN_PASSWORD` | — | 管理面板密码（留空则无需认证） |
 | `CC_ADAPTER_ACCESS_KEY` | — | `/v1/chat/completions` 访问密钥（留空则无需认证） |
 | `CC_ADAPTER_DEFAULT_MODEL` | `deepseek/deepseek-v4-flash` | 管理面板 Playground 默认模型 |
+| `CC_ADAPTER_WEB_SEARCH_PROVIDER` | — | 设为 `deepseek` 时，将 Anthropic `web_search` 请求转发到 DeepSeek |
+| `CC_ADAPTER_DEEPSEEK_API_KEY` | — | DeepSeek API Key，用于 `web_search` 转发 |
+| `CC_ADAPTER_DEEPSEEK_ANTHROPIC_URL` | `https://api.deepseek.com/anthropic` | DeepSeek Anthropic 兼容端点 |
+| `CC_ADAPTER_WEB_SEARCH_MODEL` | — | `web_search` 转发使用的 DeepSeek 模型；留空则使用请求中的模型 |
 
 也可通过 `.env` 文件配置（参考 `.env.example`）。
 
@@ -224,6 +228,10 @@ docker compose up -d
 | `CC_ADAPTER_ADMIN_PASSWORD` | — | Admin panel password (leave blank for no auth) |
 | `CC_ADAPTER_ACCESS_KEY` | — | `/v1/chat/completions` access key (leave blank for no auth) |
 | `CC_ADAPTER_DEFAULT_MODEL` | `deepseek/deepseek-v4-flash` | Admin Playground default model |
+| `CC_ADAPTER_WEB_SEARCH_PROVIDER` | — | Set to `deepseek` to forward Anthropic `web_search` requests to DeepSeek |
+| `CC_ADAPTER_DEEPSEEK_API_KEY` | — | DeepSeek API key used for `web_search` forwarding |
+| `CC_ADAPTER_DEEPSEEK_ANTHROPIC_URL` | `https://api.deepseek.com/anthropic` | DeepSeek Anthropic-compatible endpoint |
+| `CC_ADAPTER_WEB_SEARCH_MODEL` | — | DeepSeek model used for `web_search` forwarding; empty means use the request model |
 
 You can also configure via a `.env` file (see `.env.example`).
 
