@@ -6,7 +6,7 @@
 
 ## 中文
 
-OpenAI Chat Completions 兼容适配器，将 [Command Code API](https://api.commandcode.ai) 暴露为标准 OpenAI 格式。
+将 [Command Code API](https://api.commandcode.ai) 暴露为兼容 OpenAI Chat Completions、Anthropic Messages 和 OpenAI Responses 格式的适配器。
 
 支持**流式（SSE）**和**非流式**响应，附带 Web 管理面板。
 
@@ -48,8 +48,12 @@ docker compose up -d
 | `CC_ADAPTER_LOG_LEVEL` | `INFO` | 日志级别 |
 | `CC_ADAPTER_LOG_FORMAT` | `console` | 日志格式：`console` 或 `json` |
 | `CC_ADAPTER_ADMIN_PASSWORD` | — | 管理面板密码（留空则无需认证） |
-| `CC_ADAPTER_ACCESS_KEY` | — | `/v1/chat/completions` 访问密钥（留空则无需认证） |
+| `CC_ADAPTER_ACCESS_KEY` | — | API 访问密钥（留空则无需认证） |
 | `CC_ADAPTER_DEFAULT_MODEL` | `deepseek/deepseek-v4-flash` | 管理面板 Playground 默认模型 |
+| `CC_ADAPTER_HTTP_MAX_CONNECTIONS` | `200` | HTTP 连接池最大连接数 |
+| `CC_ADAPTER_HTTP_MAX_KEEPALIVE_CONNECTIONS` | `50` | HTTP 连接池最大 Keepalive 连接数 |
+| `CC_ADAPTER_HTTP2` | `false` | 启用 HTTP/2 |
+| `CC_ADAPTER_ZDR` | `true` | 发送 `x-cmd-zdr: 1` 请求头（零数据留存） |
 | `CC_ADAPTER_WEB_SEARCH_PROVIDER` | — | 设为 `deepseek` 时，将 Anthropic `web_search` 请求转发到 DeepSeek |
 | `CC_ADAPTER_DEEPSEEK_API_KEY` | — | DeepSeek API Key，用于 `web_search` 转发 |
 | `CC_ADAPTER_DEEPSEEK_ANTHROPIC_URL` | `https://api.deepseek.com/anthropic` | DeepSeek Anthropic 兼容端点 |
@@ -83,6 +87,8 @@ docker compose up -d
 
 ### 使用
 
+**OpenAI Chat Completions：**
+
 ```bash
 curl http://localhost:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
@@ -90,6 +96,19 @@ curl http://localhost:8080/v1/chat/completions \
     "model": "claude-sonnet-4-6",
     "messages": [{"role": "user", "content": "Hello"}],
     "stream": true
+  }'
+```
+
+**Anthropic Messages：**
+
+```bash
+curl http://localhost:8080/v1/messages \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: sk-your-key" \
+  -d '{
+    "model": "claude-sonnet-4-6",
+    "max_tokens": 1024,
+    "messages": [{"role": "user", "content": "Hello"}]
   }'
 ```
 
@@ -226,8 +245,12 @@ docker compose up -d
 | `CC_ADAPTER_LOG_LEVEL` | `INFO` | Log level |
 | `CC_ADAPTER_LOG_FORMAT` | `console` | Log format: `console` or `json` |
 | `CC_ADAPTER_ADMIN_PASSWORD` | — | Admin panel password (leave blank for no auth) |
-| `CC_ADAPTER_ACCESS_KEY` | — | `/v1/chat/completions` access key (leave blank for no auth) |
+| `CC_ADAPTER_ACCESS_KEY` | — | API access key (leave blank for no auth) |
 | `CC_ADAPTER_DEFAULT_MODEL` | `deepseek/deepseek-v4-flash` | Admin Playground default model |
+| `CC_ADAPTER_HTTP_MAX_CONNECTIONS` | `200` | HTTP connection pool max connections |
+| `CC_ADAPTER_HTTP_MAX_KEEPALIVE_CONNECTIONS` | `50` | HTTP connection pool max keepalive connections |
+| `CC_ADAPTER_HTTP2` | `false` | Enable HTTP/2 |
+| `CC_ADAPTER_ZDR` | `true` | Send `x-cmd-zdr: 1` header (zero data retention) |
 | `CC_ADAPTER_WEB_SEARCH_PROVIDER` | — | Set to `deepseek` to forward Anthropic `web_search` requests to DeepSeek |
 | `CC_ADAPTER_DEEPSEEK_API_KEY` | — | DeepSeek API key used for `web_search` forwarding |
 | `CC_ADAPTER_DEEPSEEK_ANTHROPIC_URL` | `https://api.deepseek.com/anthropic` | DeepSeek Anthropic-compatible endpoint |
@@ -261,6 +284,8 @@ The log format is controlled by `CC_ADAPTER_LOG_FORMAT` (default: `console`).
 
 ### Usage
 
+**OpenAI Chat Completions:**
+
 ```bash
 curl http://localhost:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
@@ -268,6 +293,19 @@ curl http://localhost:8080/v1/chat/completions \
     "model": "claude-sonnet-4-6",
     "messages": [{"role": "user", "content": "Hello"}],
     "stream": true
+  }'
+```
+
+**Anthropic Messages:**
+
+```bash
+curl http://localhost:8080/v1/messages \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: sk-your-key" \
+  -d '{
+    "model": "claude-sonnet-4-6",
+    "max_tokens": 1024,
+    "messages": [{"role": "user", "content": "Hello"}]
   }'
 ```
 
