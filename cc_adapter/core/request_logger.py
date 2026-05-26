@@ -68,8 +68,17 @@ class RequestLogger:
         if event_type == "content_block_delta" and isinstance(data, dict):
             delta = data.get("delta", {})
             idx = data.get("index", "?")
-            text = delta.get("text", "")
-            entry += f" index={idx} text={json.dumps(text)}"
+            delta_type = delta.get("type", "")
+            if delta_type == "text_delta":
+                text = delta.get("text", "")
+                entry += f" index={idx} text={json.dumps(text)}"
+            elif delta_type == "thinking_delta":
+                thinking = delta.get("thinking", "")
+                entry += f" index={idx} thinking={json.dumps(thinking)}"
+            elif delta_type == "signature_delta":
+                entry += f" index={idx} signature"
+            else:
+                entry += f" index={idx} delta_type={delta_type}"
         elif event_type == "message_start" and isinstance(data, dict):
             msg = data.get("message", {})
             entry += f" id={msg.get('id', '?')}"
