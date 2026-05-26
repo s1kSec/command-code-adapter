@@ -1,13 +1,13 @@
 from __future__ import annotations
 
+import httpx
 import structlog
 from typing import AsyncGenerator
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from cc_adapter.providers.anthropic.models import AnthropicRequest, AnthropicResponse
-from cc_adapter.providers.anthropic.request import AnthropicTranslator
+from cc_adapter.providers.anthropic.models import AnthropicRequest, AnthropicResponse, AnthropicUsage
 from cc_adapter.providers.anthropic.response import (
     translate_anthropic_stream,
     collect_and_translate_anthropic_nonstream,
@@ -17,7 +17,7 @@ from cc_adapter.core.retry import retry_on_empty, stream_with_retry
 from cc_adapter.core.runtime import get_config, get_anthropic_translator
 from cc_adapter.core.constants import STREAMING_HEADERS
 from cc_adapter.core.errors import AdapterError
-from cc_adapter.core.utils import format_sse
+from cc_adapter.core.utils import format_sse, generate_id
 
 logger = structlog.get_logger(__name__)
 
@@ -34,112 +34,106 @@ def _anthropic_sse_error(message: str) -> str:
     return format_sse("error", {"type": "error", "error": {"type": "api_error", "message": message}})
 
 
-async def _stream_with_web_search(
-    client: CommandCodeClient,
-    cc_body: dict,
-    cc_headers: dict,
-    model: str,
-) -> AsyncGenerator[str, None]:
-    from cc_adapter.providers.anthropic.response import (
-        _has_web_search,
-        _extract_web_search_calls,
-        _build_second_cc_body,
-        _events_to_list,
-        _list_to_stream,
-    )
-    from cc_adapter.providers.shared.web_search import execute_search, format_search_results
+def _extract_system_text(system):
+    if system is None:
+        return None
+    if isinstance(system, str):
+        return system
+    texts = [b.get("text", "") for b in system if isinstance(b, dict) and b.get("type") == "text"]
+    return " ".join(texts) if texts else None
 
+
+def _build_deepseek_body(req: AnthropicRequest) -> dict:
+    body: dict = {
+        "model": req.model,
+        "max_tokens": req.max_tokens,
+        "stream": req.stream,
+        "messages": [m.model_dump() for m in req.messages],
+    }
+
+    system_text = _extract_system_text(req.system)
+    if system_text:
+        body["system"] = system_text
+
+    if req.tools:
+        body["tools"] = [t.model_dump() for t in req.tools]
+
+    if req.thinking and req.thinking.type in ("enabled", "adaptive"):
+        thinking_config: dict = {"type": req.thinking.type}
+        if req.thinking.budget_tokens is not None:
+            thinking_config["budget_tokens"] = req.thinking.budget_tokens
+        body["thinking"] = thinking_config
+
+    if req.temperature is not None:
+        body["temperature"] = req.temperature
+
+    return body
+
+
+async def _stream_from_deepseek(req: AnthropicRequest) -> AsyncGenerator[str, None]:
     config = get_config()
+    url = f"{config.deepseek_anthropic_url}/v1/messages"
+    headers = {
+        "x-api-key": config.deepseek_api_key,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+    }
 
-    injected = cc_body.get("params", {}).pop("_adapter_web_search", False)
+    body = _build_deepseek_body(req)
+    body["stream"] = True
 
     try:
-        events = await _events_to_list(client.generate(cc_body, cc_headers))
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            async with client.stream("POST", url, json=body, headers=headers) as resp:
+                if resp.status_code != 200:
+                    error_text = await resp.aread()
+                    logger.warning("deepseek.forward.error", status_code=resp.status_code, error=str(error_text))
+                    yield _anthropic_sse_error(f"DeepSeek API error {resp.status_code}")
+                    return
+                async for line in resp.aiter_lines():
+                    yield line + "\n"
+    except httpx.RequestError as e:
+        logger.warning("deepseek.forward.request_error", error=str(e))
+        yield _anthropic_sse_error(f"DeepSeek API connection error: {e}")
     except Exception as e:
+        logger.warning("deepseek.forward.unexpected_error", error=str(e))
         yield _anthropic_sse_error(str(e))
-        return
-
-    if not _has_web_search(events, injected=injected):
-        try:
-            async for chunk in translate_anthropic_stream(_list_to_stream(events), model):
-                yield chunk
-        except AdapterError as e:
-            yield _anthropic_sse_error(e.message)
-        return
-
-    web_search_calls = _extract_web_search_calls(events)
-    import asyncio
-
-    async def _run_one_search(query):
-        if not query:
-            return "Error: empty search query"
-        results = await execute_search(query, config)
-        return format_search_results(results)
-
-    queries = [tc.get("input", {}).get("query", "") for tc in web_search_calls]
-    search_results = await asyncio.gather(*[_run_one_search(q) for q in queries])
-
-    second_body = _build_second_cc_body(cc_body, web_search_calls, search_results)
-
-    async for chunk in stream_with_retry(
-        lambda sc=second_body, sh=cc_headers: client.generate(sc, sh),
-        lambda stream: translate_anthropic_stream(stream, model),
-        logger,
-        "anthropic.websearch.stream",
-        error_fn=lambda msg: format_sse("error", {"type": "error", "error": {"type": "api_error", "message": msg}}),
-    ):
-        yield chunk
 
 
-async def _nonstream_with_web_search(
-    client: CommandCodeClient,
-    cc_body: dict,
-    cc_headers: dict,
-    model: str,
-) -> AnthropicResponse:
-    from cc_adapter.providers.anthropic.response import (
-        _has_web_search,
-        _extract_web_search_calls,
-        _build_second_cc_body,
-        _events_to_list,
-        collect_and_translate_anthropic_nonstream,
-    )
-    from cc_adapter.providers.shared.web_search import execute_search, format_search_results
-
+async def _deepseek_nonstream(req: AnthropicRequest) -> AnthropicResponse:
     config = get_config()
+    url = f"{config.deepseek_anthropic_url}/v1/messages"
+    headers = {
+        "x-api-key": config.deepseek_api_key,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json",
+    }
 
-    injected = cc_body.get("params", {}).pop("_adapter_web_search", False)
+    body = _build_deepseek_body(req)
+    body["stream"] = False
 
-    events = await _events_to_list(client.generate(cc_body, cc_headers))
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(url, json=body, headers=headers)
+            if resp.status_code != 200:
+                logger.warning("deepseek.forward.nonstream_error", status_code=resp.status_code, error=resp.text)
+                raise AdapterError(message=f"DeepSeek API returned {resp.status_code}", status_code=502)
+            data = resp.json()
 
-    if not _has_web_search(events, injected=injected):
-
-        async def _s():
-            for e in events:
-                yield e
-
-        return await collect_and_translate_anthropic_nonstream(_s(), model)
-
-    web_search_calls = _extract_web_search_calls(events)
-    import asyncio
-
-    async def _run_one_search(query):
-        if not query:
-            return "Error: empty search query"
-        results = await execute_search(query, config)
-        return format_search_results(results)
-
-    queries = [tc.get("input", {}).get("query", "") for tc in web_search_calls]
-    search_results = await asyncio.gather(*[_run_one_search(q) for q in queries])
-
-    second_body = _build_second_cc_body(cc_body, web_search_calls, search_results)
-
-    return await retry_on_empty(
-        lambda sc=second_body, sh=cc_headers: client.generate(sc, sh),
-        lambda stream: collect_and_translate_anthropic_nonstream(stream, model),
-        logger,
-        "anthropic.websearch.nonstream",
-    )
+        return AnthropicResponse(
+            id=data.get("id", generate_id("msg_", 16)),
+            content=data.get("content", []),
+            model=data.get("model", req.model),
+            stop_reason=data.get("stop_reason"),
+            usage=AnthropicUsage(
+                input_tokens=data.get("usage", {}).get("input_tokens", 0),
+                output_tokens=data.get("usage", {}).get("output_tokens", 0),
+            ),
+        )
+    except httpx.RequestError as e:
+        logger.warning("deepseek.forward.nonstream_request_error", error=str(e))
+        raise AdapterError(message=f"DeepSeek API connection error: {e}", status_code=502)
 
 
 @router.post("/v1/messages")
@@ -154,25 +148,34 @@ async def anthropic_chat(req: AnthropicRequest, request: Request):
         tools="yes" if req.tools else "no",
     )
 
+    from cc_adapter.providers.shared.web_search import is_web_search_enabled
+
+    config = get_config()
+
+    if is_web_search_enabled(config):
+        logger.info("anthropic.web_search.forward", model=req.model)
+        try:
+            if req.stream:
+                return StreamingResponse(
+                    _stream_from_deepseek(req),
+                    media_type="text/event-stream",
+                    headers=STREAMING_HEADERS,
+                )
+            return await _deepseek_nonstream(req)
+        except AdapterError as e:
+            return JSONResponse(
+                status_code=e.status_code,
+                content={"error": {"type": "api_error", "message": e.message}},
+            )
+
     translator = get_anthropic_translator()
     cc_body, cc_headers = translator.translate(req)
     cc_body["params"]["stream"] = True
 
     current_client = _get_client()
 
-    from cc_adapter.providers.shared.web_search import is_web_search_enabled
-
-    config = get_config()
-    web_search_enabled = is_web_search_enabled(config)
-
     try:
         if req.stream:
-            if web_search_enabled:
-                return StreamingResponse(
-                    _stream_with_web_search(current_client, cc_body, cc_headers, req.model),
-                    media_type="text/event-stream",
-                    headers=STREAMING_HEADERS,
-                )
             return StreamingResponse(
                 stream_with_retry(
                     lambda: current_client.generate(cc_body, cc_headers),
@@ -184,15 +187,12 @@ async def anthropic_chat(req: AnthropicRequest, request: Request):
                 media_type="text/event-stream",
                 headers=STREAMING_HEADERS,
             )
-        else:
-            if web_search_enabled:
-                return await _nonstream_with_web_search(current_client, cc_body, cc_headers, req.model)
-            return await retry_on_empty(
-                lambda: current_client.generate(cc_body, cc_headers),
-                lambda stream: collect_and_translate_anthropic_nonstream(stream, req.model),
-                logger,
-                "anthropic.nonstream",
-            )
+        return await retry_on_empty(
+            lambda: current_client.generate(cc_body, cc_headers),
+            lambda stream: collect_and_translate_anthropic_nonstream(stream, req.model),
+            logger,
+            "anthropic.nonstream",
+        )
     except AdapterError as e:
         return JSONResponse(
             status_code=e.status_code,

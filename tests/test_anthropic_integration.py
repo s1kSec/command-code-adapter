@@ -53,7 +53,10 @@ def _parse_sse(text: str) -> list[dict]:
 def _setup(
     cfg_overrides: dict | None = None, events: list[dict] | None = None, events_second: list[dict] | None = None
 ):
-    cfg = AppConfig(**(cfg_overrides or {}), cc_api_key="test_key_123")
+    base = {"cc_api_key": "test_key_123", "web_search_provider": "", "deepseek_api_key": ""}
+    if cfg_overrides:
+        base.update(cfg_overrides)
+    cfg = AppConfig(**base)
     mock_client = MagicMock(spec=CommandCodeClient)
     mock_client.api_key = "test_key_123"
     mock_client.base_url = "https://api.commandcode.ai"
