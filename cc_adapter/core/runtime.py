@@ -146,3 +146,8 @@ def get_provider_map() -> dict[str, str]:
 
 def get_reasoning_efforts() -> dict[str, list[str]]:
     return get_model_fetcher().get_reasoning_efforts()
+
+
+async def force_refresh_models() -> None:
+    fetcher = get_model_fetcher()
+    await fetcher.force_refresh()
