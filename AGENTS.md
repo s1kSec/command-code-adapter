@@ -27,6 +27,7 @@ docker compose up -d                  # docker-compose.yml + optional docker-com
 | `POST /v1/responses` | `providers/openai/responses_router.py` | access_key |
 | `GET /v1/models` | `main.py` (dynamic via `get_models_data()`) | none |
 | `GET /admin/api/models` | `admin/router.py` (public listing, no auth) | none |
+| `POST /admin/api/models/refresh` | `admin/router.py` | admin auth |
 
 Entry: `cc_adapter/__main__.py` → `main.py:run()` → uvicorn. Import: `from cc_adapter.main import app`.
 
@@ -53,6 +54,7 @@ Fields in `core/config.py:AppConfig` (loaded eagerly from `.env` at import).
 | `CC_ADAPTER_HTTP_MAX_KEEPALIVE_CONNECTIONS` | `50` | |
 | `CC_ADAPTER_HTTP2` | `false` | |
 | `CC_ADAPTER_ZDR` | `true` | Sends `x-cmd-zdr: 1` header (zero data retention) |
+| `CC_ADAPTER_OSS_PRIMARY_PROVIDER` | — | Optional OSS provider name, sent as `x-oss-primary-provider` header |
 | `CC_ADAPTER_WEB_SEARCH_PROVIDER` | — | Set to `"deepseek"` to forward Anthropic `web_search` to DeepSeek |
 | `CC_ADAPTER_DEEPSEEK_API_KEY` | — | DeepSeek API key for web_search forwarding |
 | `CC_ADAPTER_DEEPSEEK_ANTHROPIC_URL` | `https://api.deepseek.com/anthropic` | DeepSeek Anthropic-compatible endpoint |
@@ -76,6 +78,24 @@ Both translate to CC /alpha/generate body, stream SSE back.
 - **Constants**: `core/constants.py` — `STREAMING_HEADERS`, `NPM_URL`, `NPM_CACHE_TTL`, `NPM_ERROR_BACKOFF`, `KEY_CREDITS_CACHE_TTL`, `KEY_CREDITS_ERROR_BACKOFF`, `VERSION`.
 - **Version checker**: Background npm polling, cached 30min, fallback `0.25.2` (env `CC_ADAPTER_DEFAULT_VERSION`). See `core/version_checker.py`. Tests must set `_last_fetch_time = None` (not `0.0`) to guarantee cache invalidation.
 - **Model fetcher**: `core/model_fetcher.py` — fetches models/reasoning-efforts from CC API, feeds into `MODEL_PROVIDER_MAP` and `MODEL_REASONING_EFFORTS_MAP` via `refresh_maps()`.
+
+### CC Request Headers
+
+`make_cc_headers()` in `headers.py:12` builds the base headers used by all CC API calls. BUT `x-session-id` is **NOT** in this function — it is injected per-client-instance in `client.py:generate()`:
+
+- `CommandCodeClient.__init__()` generates `self._session_id = generate_id("sess_", 16)` once
+- `generate()` sets `headers["x-session-id"] = self._session_id` before merging `extra_headers`
+- This keeps the session ID stable across all `/alpha/generate` calls within a client lifetime
+- Non-`generate()` calls (billing/credits/usage/whoami) do NOT receive `x-session-id`
+
+### CC Request Body
+
+`body.py` constructs the body for `POST /alpha/generate`. Notable facts:
+
+- `_STATIC_CONFIG` deliberately does **NOT** contain an `"env"` field — the official CC CLI has no such field. Do not re-add it.
+- `"additionalDirectories": []` is present (matches official CC CLI schema).
+- `"environment"` is the **string** `"production"`, not an object. The CC backend rejects objects here.
+- `make_config()` shallow-copies mutable lists (`structure`, `recentCommits`) but the rest spreads from `_STATIC_CONFIG`.
 
 ## Translation quirks
 
