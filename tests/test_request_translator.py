@@ -43,7 +43,8 @@ def test_basic_message_translation(translator):
     assert body["params"]["model"] == "claude-sonnet-4-6"
     assert body["params"]["messages"][0]["content"] == [{"type": "text", "text": "hello"}]
     assert body["params"]["stream"] is False
-    assert body["config"]["env"] == "adapter"
+    assert "env" not in body["config"]
+    assert body["config"]["additionalDirectories"] == []
     assert "Authorization" not in headers
 
 

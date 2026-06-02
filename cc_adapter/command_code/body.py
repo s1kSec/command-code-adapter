@@ -13,7 +13,6 @@ _CC_BODY_SKELETON: dict[str, Any] = {
 }
 
 _STATIC_CONFIG = {
-    "env": "adapter",
     "workingDir": os.getcwd(),
     "environment": "production",
     "structure": ["src/", "tests/", "docs/"],
@@ -22,6 +21,7 @@ _STATIC_CONFIG = {
     "mainBranch": "main",
     "gitStatus": "clean",
     "recentCommits": [],
+    "additionalDirectories": [],
 }
 
 
