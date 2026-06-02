@@ -13,6 +13,7 @@ from cc_adapter.core.runtime import (
     get_provider_map,
     get_reasoning_efforts,
     get_model_fetcher,
+    force_refresh_models,
 )
 from cc_adapter.core.config import DEFAULT_MODEL
 from cc_adapter.core.constants import VERSION
@@ -103,6 +104,7 @@ _MODEL_DISPLAY_PREFIXES: dict[str, str] = {
     "minimax-m2-": "Minimax M2 ",
     "qwen-3-6-": "Qwen 3-6 ",
     "step-3-5-": "Step 3-5 ",
+    "mimo-": "MiMo ",
 }
 
 
@@ -145,6 +147,17 @@ async def get_reasoning_effort_config():
 @router.get("/models/status")
 async def models_status():
     return get_model_fetcher().get_status()
+
+
+@router.post("/models/refresh")
+async def models_refresh(_=Depends(verify_auth)):
+    try:
+        await force_refresh_models()
+        status = get_model_fetcher().get_status()
+        return {"message": "Models refreshed", "status": status}
+    except Exception as e:
+        logger.error("admin.models_refresh.failed", error=str(e))
+        raise HTTPException(status_code=500, detail="Model refresh failed, check server logs")
 
 
 @router.put("/config")

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import structlog
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -45,7 +46,25 @@ async def lifespan(app: FastAPI):
     get_version_checker().get_version()  # triggers background fetch via _fetch_task guard
     get_model_fetcher().refresh()
 
+    # Background periodic model refresh (every 30 min)
+    async def _periodic_model_refresh():
+        while True:
+            await asyncio.sleep(1800)
+            try:
+                get_model_fetcher().refresh()
+            except Exception:
+                logger.warning("periodic_model_refresh.failed", exc_info=True)
+
+    refresh_task = asyncio.create_task(_periodic_model_refresh())
+
     yield
+
+    refresh_task.cancel()
+    try:
+        await refresh_task
+    except asyncio.CancelledError:
+        pass
+
     cc_client = get_runtime_client()
     if cc_client is not None:
         await cc_client.aclose()

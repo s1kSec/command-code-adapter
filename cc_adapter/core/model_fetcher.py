@@ -26,6 +26,7 @@ MODEL_PREFIXES = (
     "zai-org/",
     "Qwen/",
     "baseten:",
+    "xiaomi/",
 )
 
 from cc_adapter.core.constants import NPM_URL, NPM_CACHE_TTL, NPM_ERROR_BACKOFF
@@ -142,7 +143,7 @@ class ModelFetcher:
         self._provider_map = provider_map
         self._reasoning_efforts = reasoning_efforts
 
-    async def _fetch_and_update(self) -> None:
+    async def _fetch_and_update(self, force: bool = False) -> None:
         self._last_error = None
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
@@ -154,7 +155,7 @@ class ModelFetcher:
             if not latest_version:
                 raise ValueError("could not determine latest version")
 
-            if self._cached_version == latest_version and self._fetched_at is not None:
+            if not force and self._cached_version == latest_version and self._fetched_at is not None:
                 self._fetched_at = time.monotonic()
                 self._sync_maps()
                 logger.info("model_fetcher.version_unchanged", version=latest_version)
@@ -184,12 +185,21 @@ class ModelFetcher:
             self._cached_version = latest_version
             self._fetched_at = time.monotonic()
             self._sync_maps()
-            logger.info("model_fetcher.updated", version=latest_version, count=len(entries))
+            logger.info("model_fetcher.updated", version=latest_version, count=len(entries), forced=force)
 
         except Exception as e:
             self._last_error = str(e)
             self._fetched_at = time.monotonic()
             logger.warning("model_fetcher.fetch_failed", error=str(e))
+
+    async def force_refresh(self) -> None:
+        if self._fetch_task and not self._fetch_task.done():
+            self._fetch_task.cancel()
+            try:
+                await self._fetch_task
+            except asyncio.CancelledError:
+                pass
+        await self._fetch_and_update(force=True)
 
     def _extract_models(self, tarball_data: bytes) -> list[dict]:
         with tarfile.open(fileobj=io.BytesIO(tarball_data), mode="r:gz") as tar:
